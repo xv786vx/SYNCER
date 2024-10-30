@@ -35,7 +35,7 @@ for track in t_to_sync_yt:
         t_to_sync_sp.append(result[0])
     else:
         print(f"A suitable match for <{song}> by <{artists}> was not found.")
-        choice = int(input(f"Would you like to (1) Smart Sync (NOT IMPLEMENTED), (2) manually search the song, or (3) skip? "))
+        choice = int(input(f"Would you like to (1) Smart Sync, (2) manually search the song, or (3) skip? "))
         if choice == 1:
             sp.add_to_playlist(sp.get_playlist_by_name(pl_info['title'])['id'], t_to_sync_sp)
             t_to_sync_sp.clear()

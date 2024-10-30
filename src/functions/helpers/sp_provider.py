@@ -14,13 +14,20 @@ sp_client_secret = os.getenv("SP_CLIENT_SECRET")
 
 class SpotifyProvider(Provider):
     def __init__(self):
+
+        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        token_dir = os.path.join(root_dir, 'auth_tokens')
+        os.makedirs(token_dir, exist_ok=True)
+        cache_path = os.path.join(token_dir, '.cache')
+
         self.client_id = sp_client_id
         self.client_secret = sp_client_secret
         self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
             client_id = self.client_id,       # Replace with your Client ID
             client_secret= self.client_secret,   # Replace with your Client Secret
             redirect_uri="http://localhost:3000/callback",     # Replace with your Redirect URI
-            scope="playlist-modify-private playlist-modify-public"   # You can adjust scope based on your needs
+            scope="playlist-modify-private playlist-modify-public" ,    # You can adjust scope based on your needs
+            cache_path=cache_path  
         ))
 
     

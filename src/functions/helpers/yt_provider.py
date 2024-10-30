@@ -21,13 +21,17 @@ yt_auth_provider_x509_cert_url = os.getenv("YT_AUTH_PROVIDER_X509_CERT_URL")
 yt_client_secret = os.getenv("YT_CLIENT_SECRET")
 yt_redirect_uri = os.getenv("YT_REDIRECT_URIS")
 
-TOKEN_FILE = "token.json"
-
 class YoutubeProvider(Provider):
     def __init__(self):
         scopes =   ['https://www.googleapis.com/auth/youtube.readonly',
                         'https://www.googleapis.com/auth/youtube']
         
+
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+        token_dir = os.path.join(root_dir, 'auth_tokens')
+        os.makedirs(token_dir, exist_ok=True)
+        TOKEN_FILE = os.path.join(token_dir, 'token.json')
+
         credentials = None
         
         # load credentials from token file if it exists
