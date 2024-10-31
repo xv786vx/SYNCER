@@ -15,7 +15,7 @@ sp_client_secret = os.getenv("SP_CLIENT_SECRET")
 class SpotifyProvider(Provider):
     def __init__(self):
 
-        root_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         token_dir = os.path.join(root_dir, 'auth_tokens')
         os.makedirs(token_dir, exist_ok=True)
         cache_path = os.path.join(token_dir, '.cache')
@@ -26,9 +26,13 @@ class SpotifyProvider(Provider):
             client_id = self.client_id,       # Replace with your Client ID
             client_secret= self.client_secret,   # Replace with your Client Secret
             redirect_uri="http://localhost:3000/callback",     # Replace with your Redirect URI
-            scope="playlist-modify-private playlist-modify-public" ,    # You can adjust scope based on your needs
+            scope="playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
             cache_path=cache_path  
         ))
+        if self.sp.current_user():
+            print("Spotify authorization successful")
+        else:
+            print("Spotify authorization failed")
 
     
     def search_auto(self, track_name, artists) -> list:
@@ -178,12 +182,11 @@ class SpotifyProvider(Provider):
         tracks_info = []
         for item in playlist_items['items']:
             track = item['track']
-            track_name = track['name']
-            artists = ', '.join([artist['name'] for artist in track['artists']])
             
             tracks_info.append({
-                'title': track_name,
-                'artist': artists,
+                'title': track['name'],
+                'id': track['id'],
+                'artist': ', '.join([artist['name'] for artist in track['artists']]),
             })
         
         return tracks_info
@@ -224,3 +227,17 @@ class SpotifyProvider(Provider):
         )
         print(f"Created Spotify playlist: {playlist['name']} with ID: {playlist['id']}")
         #return playlist
+
+
+    def update_playlist_cover(self, playlist_id, image_url):
+        """updates the cover image of a Spotify playlist.
+
+        Args:
+            playlist_id (str): the id of the playlist to update.
+            image_url (str): the url of the image to update the playlist with.
+
+        Returns:
+            None: only mutates the playlist.
+        """
+        self.sp.playlist_upload_cover_image(playlist_id, image_url)
+        print(f"Updated playlist {playlist_id} with image {image_url}")

@@ -289,6 +289,32 @@ class YoutubeProvider(Provider):
         return response
     
 
+    def update_playlist_cover(self, playlist_id, image_url):
+        """updates the cover image of a Youtube playlist.
+
+        Args:
+            playlist_id (str): the id of the playlist to update.
+            image_url (str): the url of the image to update the playlist with.
+
+        Returns:
+            None: only mutates the playlist.
+        """
+        request = self.youtube.playlists().update(
+            part="snippet",
+            body={
+                "id": playlist_id,
+                "snippet": {
+                    "thumbnails": {
+                        "default": {
+                            "url": image_url
+                        }
+                    }
+                }
+            }
+        )
+        request.execute()
+    
+
     def download_song(self, track_id):
         """YT_PROVIDER EXCLUSIVE. Downloads a song from Youtube given a video id.
             ***FFMPEG IS REQUIRED FOR INSTALLATION, WORKING ON BUNDLING THIS INTO THE PACKAGE***

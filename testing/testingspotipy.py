@@ -1,12 +1,8 @@
-from functions.helpers.sp_provider import SpotifyProvider
+from src.functions.helpers.sp_provider import SpotifyProvider
 
 sp = SpotifyProvider()
 
-track_name = "jasiah yung bans shenanigans exclusive"
-artists = "worldstarhiphop"
-
-results = sp.search_auto(track_name, artists)
-
+print(sp.get_playlist_by_name('rigea'))
 # spotify:track:3lLT1GM0h5bJXv0lToc4zw
 
 
