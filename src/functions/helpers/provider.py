@@ -1,5 +1,6 @@
 import re
 from fuzzywuzzy import fuzz
+import html
 
 class Provider:
     def search_auto(self, query):
@@ -36,6 +37,9 @@ def preprocessv2(text):
         str: the clean version of the given text.
     """
     stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh"}
+
+    text = html.unescape(text)
+
     cleaned_text = re.sub(r'[^a-zA-Z0-9\s]', '', text.lower())
     tokens = cleaned_text.split()
     filtered_tokens = [token for token in tokens if token not in stopwords]
@@ -44,6 +48,7 @@ def preprocessv2(text):
     
     return final_text
 
+#%%
 def preprocessv3(song_title, artists):
     """filters out stopwords and non-alphanumeric characters from a given str, and also filters out artist names from the song title that appear in artists as well.
 
@@ -56,6 +61,8 @@ def preprocessv3(song_title, artists):
     """
     stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh"}
     
+    song_title = html.unescape(song_title)
+
     # Ensure artists is a list of lowercase words
     if isinstance(artists, str):
         artists = artists.lower().split()
@@ -63,21 +70,18 @@ def preprocessv3(song_title, artists):
         artists = [artist.lower() for artist in artists]
 
     all_stopwords = stopwords | set(artists)
+    # print(all_stopwords)
+
     cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
+
     tokens = cleaned_song_title.split()
+    # print(tokens)
+    new_artists = ", ".join([token for token in tokens if token in all_stopwords])
     filtered_tokens = [token for token in tokens if token not in all_stopwords]
+    # print(filtered_tokens)
 
     final_text = " ".join(filtered_tokens)
-    
-    return final_text
-
-#DELETE LATER??
-# def fuzzy_matchv2(str1, str2):
-#     ratio = fuzz.ratio(str1, str2)
-#     partial_ratio = fuzz.partial_ratio(str1, str2)
-    
-#     # Weighted combination for refined matching
-#     return int(0.7 * ratio + 0.3 * partial_ratio)
+    return final_text, new_artists
 
 def fuzzy_matchv3(str1, str2):
     """Calculates the similarity between two given strs using Levenshtein distances and tokenization.
@@ -95,3 +99,4 @@ def fuzzy_matchv3(str1, str2):
     
     # Weighted combination for refined matching, prioritizing token_set_ratio for artist mismatch tolerance
     return int(0.45 * ratio + 0.2 * partial_ratio + 0.35 * token_set_ratio)
+# %%
