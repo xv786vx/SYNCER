@@ -19,3 +19,9 @@ token.json
 # songs downloaded
 downloads/
 
+# build and dist
+build/
+dist/
+
+main.spec
+

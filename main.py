@@ -2,7 +2,7 @@ import argparse
 import sys
 import os
 
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
+sys.path.insert(0, os.path.join(os.getcwd(), 'src'))
 from src.functions.sync_sp_to_yt import sync_sp_to_yt
 from src.functions.sync_yt_to_sp import sync_yt_to_sp
 from src.functions.merge_playlists import merge_playlists
