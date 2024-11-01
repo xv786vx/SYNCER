@@ -229,15 +229,15 @@ class SpotifyProvider(Provider):
         #return playlist
 
 
-    def update_playlist_cover(self, playlist_id, image_url):
-        """updates the cover image of a Spotify playlist.
+    # def update_playlist_cover(self, playlist_id, image_url):
+    #     """updates the cover image of a Spotify playlist.
 
-        Args:
-            playlist_id (str): the id of the playlist to update.
-            image_url (str): the url of the image to update the playlist with.
+    #     Args:
+    #         playlist_id (str): the id of the playlist to update.
+    #         image_url (str): the url of the image to update the playlist with.
 
-        Returns:
-            None: only mutates the playlist.
-        """
-        self.sp.playlist_upload_cover_image(playlist_id, image_url)
-        print(f"Updated playlist {playlist_id} with image {image_url}")
+    #     Returns:
+    #         None: only mutates the playlist.
+    #     """
+    #     self.sp.playlist_upload_cover_image(playlist_id, image_url)
+    #     print(f"Updated playlist {playlist_id} with image {image_url}")
