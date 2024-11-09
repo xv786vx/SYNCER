@@ -9,4 +9,4 @@ yt = YoutubeProvider()
 
 # yt.download_song(test_id)
 
-print(yt.search_auto('Be Natural', 'red velvet taeyong'))
+print(yt.search_auto('automatic', 'red velvet'))

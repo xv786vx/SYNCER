@@ -36,7 +36,7 @@ def preprocessv2(text):
     Returns:
         str: the clean version of the given text.
     """
-    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh"}
+    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv'}
 
     text = html.unescape(text)
 
@@ -49,7 +49,7 @@ def preprocessv2(text):
     return final_text
 
 #%%
-def preprocessv3(song_title, artists):
+def preprocessv3(song_title, sp_artists):
     """filters out stopwords and non-alphanumeric characters from a given str, and also filters out artist names from the song title that appear in artists as well.
 
     Args:
@@ -59,21 +59,20 @@ def preprocessv3(song_title, artists):
     Returns:
         str: the clean version of the given song title.
     """
-    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh"}
+    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv'}
     
     song_title = html.unescape(song_title)
 
     # Ensure artists is a list of lowercase words
-    if isinstance(artists, str):
-        artists = artists.lower().split()
+    if isinstance(sp_artists, str):
+        sp_artists = sp_artists.lower().split()
     else:
-        artists = [artist.lower() for artist in artists]
+        sp_artists = [artist.lower() for artist in sp_artists]
 
-    all_stopwords = stopwords | set(artists)
+    all_stopwords = stopwords | set(sp_artists)
     # print(all_stopwords)
 
     cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
-
     tokens = cleaned_song_title.split()
     # print(tokens)
     new_artists = ", ".join([token for token in tokens if token in all_stopwords])
@@ -83,6 +82,50 @@ def preprocessv3(song_title, artists):
     final_text = " ".join(filtered_tokens)
     return final_text, new_artists
 
+def preprocessv4(song_title, sp_artists, yt_artists):
+    """filters out stopwords and non-alphanumeric characters from a given str, and also filters out artist names from the song title that appear in artists as well.
+
+    Args:
+        text (str): a given song title
+        artists (str | list[str]): the artist(s) associated with the song title.
+
+    Returns:
+        str: the clean version of the given song title.
+    """
+    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv'}
+    
+    song_title = html.unescape(song_title)
+
+    # Ensure artists is a list of lowercase words
+    if isinstance(sp_artists, str):
+        sp_artists = sp_artists.lower().split()
+    else:
+        sp_artists = [artist.lower() for artist in sp_artists]
+
+    if isinstance(yt_artists, str):
+        yt_artists = set(yt_artists.lower().split())
+    else:
+        yt_artists = set(artist.lower() for artist in yt_artists)
+
+    all_stopwords = stopwords | set(sp_artists)
+    # print(all_stopwords)
+
+    cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
+    tokens = cleaned_song_title.split()
+
+    for token in tokens:
+        if token in sp_artists:
+            yt_artists.add(token)
+
+    # print(tokens)
+    filtered_tokens = [token for token in tokens if token not in all_stopwords]
+    # print(filtered_tokens)
+
+    final_text = " ".join(filtered_tokens)
+    new_yt_artists = ', '.join(sorted(yt_artists))
+    return final_text, new_yt_artists
+
+#%%
 def fuzzy_matchv3(str1, str2):
     """Calculates the similarity between two given strs using Levenshtein distances and tokenization.
 
@@ -98,5 +141,5 @@ def fuzzy_matchv3(str1, str2):
     token_set_ratio = fuzz.token_set_ratio(str1, str2)
     
     # Weighted combination for refined matching, prioritizing token_set_ratio for artist mismatch tolerance
-    return int(0.45 * ratio + 0.2 * partial_ratio + 0.35 * token_set_ratio)
-# %%
+    return int(0.3 * ratio + 0.2 * partial_ratio + 0.5 * token_set_ratio)
+

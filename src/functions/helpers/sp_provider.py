@@ -2,7 +2,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
 from .provider import Provider
-from .provider import preprocessv2, preprocessv3, fuzzy_matchv3
+from .provider import preprocessv2, preprocessv3, preprocessv4, fuzzy_matchv3
 
 import os
 from dotenv import load_dotenv
@@ -54,8 +54,7 @@ class SpotifyProvider(Provider):
         clean_track_name, artists = preprocessv3(track_name, artists), preprocessv2(artists)
         print(f"cleaned track name: {clean_track_name}")
         # print(f"old track name: {track_name}")
-        print(f"new artists: {artists}")
-        print("")
+        # print("")
         
         query = f"{clean_track_name} {artists}"
 
@@ -81,11 +80,11 @@ class SpotifyProvider(Provider):
                     best_match[2] = artist_match
                     best_match[3] = song_title
                     best_match[4] = artist_names
+            print(best_match)
             
-            if best_match[1] > 65 and best_match[2] > 65:
+            if best_match[1] > 75 and best_match[2] > 65:
                 print(f"final song title (sp): {best_match[3]}, song title (yt): {track_name.lower()}")
                 print(f"final artist names (sp): {best_match[4]}, artist names (yt): {artists}")
-                print("")
                 return best_match
             
             else: 
@@ -228,16 +227,3 @@ class SpotifyProvider(Provider):
         print(f"Created Spotify playlist: {playlist['name']} with ID: {playlist['id']}")
         #return playlist
 
-
-    # def update_playlist_cover(self, playlist_id, image_url):
-    #     """updates the cover image of a Spotify playlist.
-
-    #     Args:
-    #         playlist_id (str): the id of the playlist to update.
-    #         image_url (str): the url of the image to update the playlist with.
-
-    #     Returns:
-    #         None: only mutates the playlist.
-    #     """
-    #     self.sp.playlist_upload_cover_image(playlist_id, image_url)
-    #     print(f"Updated playlist {playlist_id} with image {image_url}")
