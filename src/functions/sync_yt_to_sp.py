@@ -50,6 +50,3 @@ def sync_yt_to_sp(playlist_to_modify):
                 continue                
         
     sp.add_to_playlist(sp.get_playlist_by_name(pl_info['title'])['id'], t_to_sync_sp)
-
-sync_yt_to_sp('kpoop')
-
