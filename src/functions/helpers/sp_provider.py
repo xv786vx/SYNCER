@@ -1,5 +1,5 @@
 import spotipy
-from spotipy.oauth2 import SpotifyOAuth
+from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 
 from .provider import Provider
 from .provider import preprocessv2, preprocessv3, preprocessv4, fuzzy_matchv3
@@ -14,26 +14,51 @@ sp_client_secret = os.getenv("SP_CLIENT_SECRET")
 
 class SpotifyProvider(Provider):
     def __init__(self):
-
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         token_dir = os.path.join(root_dir, 'auth_tokens')
         os.makedirs(token_dir, exist_ok=True)
-        cache_path = os.path.join(token_dir, '.cache')
+        self.cache_path = os.path.join(token_dir, '.cache')
 
-        self.client_id = sp_client_id
+        self.client_id = sp_client_id  # Securely source these
         self.client_secret = sp_client_secret
-        self.sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-            client_id = self.client_id,       # Replace with your Client ID
-            client_secret= self.client_secret,   # Replace with your Client Secret
-            redirect_uri="http://localhost:3000/callback",     # Replace with your Redirect URI
-            scope="playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
-            cache_path=cache_path  
-        ))
-        if self.sp.current_user():
-            print("Spotify authorization successful")
-        else:
-            print("Spotify authorization failed")
 
+        self.init_spotify_client()
+
+    def init_spotify_client(self):
+        """Initialize the Spotify client with authentication."""
+        try:
+            self.sp = spotipy.Spotify(auth_manager=self.get_auth_manager())
+            if self.sp.current_user():
+                print("Spotify authorization successful")
+            else:
+                print("Spotify authorization failed")
+        except SpotifyOauthError as e:
+            print(f"Authorization error: {e}")
+            if 'invalid_client' in str(e):
+                print("Invalid client credentials. Attempting to reauthorize...")
+                self.reauthorize()
+
+    def get_auth_manager(self):
+        """Return a SpotifyOAuth object configured with client credentials and cache path."""
+        return SpotifyOAuth(
+            client_id=self.client_id,
+            client_secret=self.client_secret,
+            redirect_uri="http://localhost:3000/callback",
+            scope="playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative",
+            cache_path=self.cache_path
+        )
+
+    def reauthorize(self):
+        """Delete the existing .cache file and prompt the user to reauthorize."""
+        if os.path.exists(self.cache_path):
+            os.remove(self.cache_path)
+            print("Existing credentials deleted. Please authorize the application again.")
+
+        # Reinitialize the Spotify client to trigger a new authorization flow
+        self.init_spotify_client()
+        print("Reauthorization complete. Follow the instructions to authorize the application.")
+
+    
     
     def search_auto(self, track_name, artists) -> list:
         """algorithmically processes track_name and artists from YouTube to search for equivalent Spotify track.

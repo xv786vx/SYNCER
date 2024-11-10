@@ -5,7 +5,9 @@ import shlex
 from dotenv import load_dotenv
 
 # Load environment variables from a .env file if not already set
-load_dotenv()
+base_path = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+env_path = os.path.join(base_path, '.env')
+load_dotenv(env_path)
 
 sys.path.insert(0, os.path.join(os.getcwd(), 'src'))
 from src.functions.sync_sp_to_yt import sync_sp_to_yt
@@ -92,7 +94,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"An error occurred: {e}")
         input("Press Enter to exit...")
-
-
 
 # COMMAND TO BUILD: pyinstaller --onefile --add-data "src;src" --add-data ".env;." main.py
