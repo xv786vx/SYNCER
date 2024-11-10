@@ -14,7 +14,6 @@ def merge_playlists(yt_name, sp_name, merge_name):
     yt_song_names = [[song['title'], song['artist']] for song in yt_pl_songs]
 
 
-
     # merge the playlists on SPOTIFY
     sp.create_playlist(merge_name)
     merge_id = sp.get_playlist_by_name(merge_name)['id']
