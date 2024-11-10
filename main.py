@@ -70,6 +70,7 @@ def main():
             print("  sync_yt_to_sp <yt_playlist_name> - Sync Youtube playlist to Spotify")
             print("  sync_sp_to_yt <sp_playlist_name> - Sync Spotify playlist to Youtube")
             print("  merge <yt_playlist_name> <sp_playlist_name> - Merge Spotify and Youtube playlists")
+            print("  download_yt_song <song_name> <artists> - Download YouTube song to MP3")
             print("  exit - Quit the app")
             
             # Prompt for user input if no arguments are provided
