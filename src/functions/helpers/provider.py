@@ -36,7 +36,7 @@ def preprocessv2(text):
     Returns:
         str: the clean version of the given text.
     """
-    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv'}
+    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv', 'ver'}
 
     text = html.unescape(text)
 
@@ -45,6 +45,7 @@ def preprocessv2(text):
     filtered_tokens = [token for token in tokens if token not in stopwords]
     
     final_text = " ".join(filtered_tokens)
+    print("preprocessv2:", final_text)
     
     return final_text
 
@@ -59,7 +60,7 @@ def preprocessv3(song_title, sp_artists):
     Returns:
         str: the clean version of the given song title.
     """
-    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv'}
+    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv', 'ver'}
     
     song_title = html.unescape(song_title)
 
@@ -82,6 +83,7 @@ def preprocessv3(song_title, sp_artists):
     final_text = " ".join(filtered_tokens)
     return final_text, new_artists
 
+#%%
 def preprocessv4(song_title, sp_artists, yt_artists):
     """filters out stopwords and non-alphanumeric characters from a given str, and also filters out artist names from the song title that appear in artists as well.
 
@@ -92,38 +94,65 @@ def preprocessv4(song_title, sp_artists, yt_artists):
     Returns:
         str: the clean version of the given song title.
     """
-    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv'}
+    stopwords = {"feat", "featuring", "official", "music", "video", "audio", "topic", "ft", "wshh", 'mv', 'ver', 'lyrics'}
     
-    song_title = html.unescape(song_title)
+    song_title, sp_artists, yt_artists = html.unescape(song_title), html.unescape(sp_artists), html.unescape(yt_artists)
 
-    # Ensure artists is a list of lowercase words
+    # tokenize all 3 inputs
+    if isinstance(song_title, str):
+        # Tokenize the string directly
+        song_title = re.split(r'[^a-zA-Z0-9]+', song_title.strip())
+    elif isinstance(song_title, list):
+        # Join list items into a single string and then tokenize
+        combined_string = ' '.join(map(str, sp_artists))
+        song_title = re.split(r'[^a-zA-Z0-9]+', song_title.strip())
+
     if isinstance(sp_artists, str):
-        sp_artists = sp_artists.lower().split()
-    else:
-        sp_artists = [artist.lower() for artist in sp_artists]
+        # Tokenize the string directly
+        sp_artists = re.split(r'[^a-zA-Z0-9]+', sp_artists.strip())
+    elif isinstance(sp_artists, list):
+        # Join list items into a single string and then tokenize
+        combined_string = ' '.join(map(str, sp_artists))
+        sp_artists = re.split(r'[^a-zA-Z0-9]+', combined_string.strip())
 
     if isinstance(yt_artists, str):
-        yt_artists = set(yt_artists.lower().split())
-    else:
-        yt_artists = set(artist.lower() for artist in yt_artists)
+        # Tokenize the string directly
+        yt_artists = re.split(r'[^a-zA-Z0-9]+', yt_artists.strip())
+    elif isinstance(yt_artists, list):
+        # Join list items into a single string and then tokenize
+        combined_string = ' '.join(map(str, yt_artists))
+        yt_artists = re.split(r'[^a-zA-Z0-9]+', combined_string.strip())
+    
+    print(f"song_title: {song_title}")
+    print(f"sp_artists: {sp_artists}")
+    print(f"yt_artists: {yt_artists}")
 
-    all_stopwords = stopwords | set(sp_artists)
-    # print(all_stopwords)
+    # all_stopwords = stopwords | set(sp_artists)
+    # # print(all_stopwords)
 
-    cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
-    tokens = cleaned_song_title.split()
+    # cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
+    # tokens = cleaned_song_title.split()
+    remove_from_title = []
+    for token in song_title:
+        if token in sp_artists and token not in yt_artists:
+            yt_artists.append(token)
+            remove_from_title.append(token)
+        elif token in sp_artists and token in yt_artists:
+            remove_from_title.append(token)
+    
+    song_title = [token for token in song_title if token not in remove_from_title]
+            
 
-    for token in tokens:
-        if token in sp_artists:
-            yt_artists.add(token)
+    # # print(tokens)
+    song_title = [token for token in song_title if token not in stopwords or token not in sp_artists]
+    # # print(filtered_tokens)
 
-    # print(tokens)
-    filtered_tokens = [token for token in tokens if token not in all_stopwords]
-    # print(filtered_tokens)
-
-    final_text = " ".join(filtered_tokens)
-    new_yt_artists = ', '.join(sorted(yt_artists))
-    return final_text, new_yt_artists
+    song_title = ' '.join(song_title)
+    sp_artists = ' '.join(sp_artists)
+    yt_artists = ' '.join(yt_artists)
+    # final_text = " ".join(filtered_tokens)
+    # new_yt_artists = ', '.join(sorted(yt_artists))
+    return song_title, yt_artists
 
 #%%
 def fuzzy_matchv3(str1, str2):

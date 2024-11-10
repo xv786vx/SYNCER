@@ -48,14 +48,8 @@ class SpotifyProvider(Provider):
             if a suitable match is found, else None.
         """
 
-        # clean inputs
-        # print(f"old artists: {artists}")
-        # clean_track_name, artists = preprocess(track_name), preprocess(artists)
-        clean_track_name, artists = preprocessv3(track_name, artists), preprocessv2(artists)
-        print(f"cleaned track name: {clean_track_name}")
-        # print(f"old track name: {track_name}")
-        # print("")
-        
+        clean_track_name, artists = preprocessv3(track_name, artists)[0], preprocessv2(artists)
+
         query = f"{clean_track_name} {artists}"
 
         results = self.sp.search(q=query, limit=6, type='track')
@@ -65,7 +59,9 @@ class SpotifyProvider(Provider):
 
             for track in results['tracks']['items']:
                 artist_names = [preprocessv2(artist['name']) for artist in track['artists']]
-                song_title = preprocessv3(track['name'], artist_names)
+                song_title = preprocessv3(track['name'], artist_names)[0]
+
+                clean_track_name, artists = preprocessv4(clean_track_name, artist_names, artists)
                 
                 #region
                 track_names_match = max(fuzzy_matchv3(song_title, track_name), fuzzy_matchv3(song_title, clean_track_name))
@@ -73,7 +69,7 @@ class SpotifyProvider(Provider):
                 
                 
                 if track_names_match >= best_match[1] and artist_match >= best_match[2]:
-                    print(f"MATCH FOUND FOR {track_name} BY {artists}")
+                    print(f"MATCH FOUND FOR {clean_track_name} BY {artists}")
                     print(f"{song_title} BY {artist_names}")
                     best_match[0] = track['uri']
                     best_match[1] = track_names_match
@@ -82,9 +78,10 @@ class SpotifyProvider(Provider):
                     best_match[4] = artist_names
             print(best_match)
             
-            if best_match[1] > 75 and best_match[2] > 65:
+            if best_match[1] > 70 and best_match[2] > 65:
                 print(f"final song title (sp): {best_match[3]}, song title (yt): {track_name.lower()}")
                 print(f"final artist names (sp): {best_match[4]}, artist names (yt): {artists}")
+                print("")
                 return best_match
             
             else: 
@@ -95,6 +92,79 @@ class SpotifyProvider(Provider):
             input("Press Enter to continue...")
             return None
         
+
+    def search_autov2(self, track_name, artists) -> list:
+        """algorithmically processes track_name and artists from YouTube to search for equivalent Spotify track.
+
+        Args:
+            track_name (str): the video title scraped from a given YouTube video.
+            artists (str): a single channel name scraped from a given YouTube video.
+
+        Returns:
+            list[]: returns a 
+                [song uri, track_name match score, artist match score, song title, artist names]
+            if a suitable match is found, else None.
+        """
+
+        # Initial preprocessing
+        clean_track_name, artists = preprocessv3(track_name, artists)[0], preprocessv2(artists)
+
+        # Initial search query
+        query = f"{clean_track_name} {artists}"
+        results = self.sp.search(q=query, limit=1, type='track')
+
+        if results['tracks']['items']:
+            best_match = ["", 0, 0, "", ""]
+
+            for track in results['tracks']['items']:
+                artist_names = [preprocessv2(artist['name']) for artist in track['artists']]
+                song_title = preprocessv3(track['name'], artist_names)[0]
+
+                # Match calculation
+                track_names_match = max(fuzzy_matchv3(song_title, track_name), fuzzy_matchv3(song_title, clean_track_name))
+                artist_match = max(fuzzy_matchv3(artist_name, artists) for artist_name in artist_names)
+
+                # Update best match if applicable
+                if track_names_match >= best_match[1] and artist_match >= best_match[2]:
+                    best_match[0] = track['uri']
+                    best_match[1] = track_names_match
+                    best_match[2] = artist_match
+                    best_match[3] = song_title
+                    best_match[4] = artist_names
+
+            # If initial results yield updates, run a refined query once
+            if best_match[1] > 75 and best_match[2] > 65:
+                # Update the query with improved inputs
+                updated_query = f"{best_match[3]} {' '.join(best_match[4])}"
+                updated_results = self.sp.search(q=updated_query, limit=6, type='track')
+
+                # Check the updated results for a better match
+                for track in updated_results['tracks']['items']:
+                    updated_artist_names = [preprocessv2(artist['name']) for artist in track['artists']]
+                    updated_song_title = preprocessv3(track['name'], updated_artist_names)[0]
+
+                    updated_track_names_match = max(fuzzy_matchv3(updated_song_title, track_name), fuzzy_matchv3(updated_song_title, best_match[3]))
+                    updated_artist_match = max(fuzzy_matchv3(artist_name, artists) for artist_name in updated_artist_names)
+
+                    if updated_track_names_match >= best_match[1] and updated_artist_match >= best_match[2]:
+                        best_match[0] = track['uri']
+                        best_match[1] = updated_track_names_match
+                        best_match[2] = updated_artist_match
+                        best_match[3] = updated_song_title
+                        best_match[4] = updated_artist_names
+
+            print(best_match)
+
+            if best_match[1] > 75 and best_match[2] > 65:
+                return best_match
+            else:
+                print("no suitable match found.")
+                return None
+        else:
+            print("err: result didn't match given structure")
+            input("Press Enter to continue...")
+            return None
+
 
     def search_manual(self, track_name, artists) -> str:
         """given a user's input, manually search for a track on Spotify.
