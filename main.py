@@ -43,15 +43,32 @@ def main():
         merge_playlists(args.yt_playlist_name, args.sp_playlist_name)
 
     else:
-        parser.print_help()
+        print("Welcome to the Syncer App!")
+        print("Type out your command below and press Enter:")
+        print("Available commands:")
+        print("  sync_yt_to_sp <yt_playlist_name> - Sync Youtube playlist to Spotify")
+        print("  sync_sp_to_yt <sp_playlist_name> - Sync Spotify playlist to Youtube")
+        print("  merge <yt_playlist_name> <sp_playlist_name> - Merge Spotify and Youtube playlists")
+        print("  -h - Help")
 
-
-
-    # MAKE A PAPER LIST OF ARGUMENTS BEFORE ADDING THEM HERE
-
-    # sync yt to sp
-    # sync sp to yt
-    # merge yt + sp
+        input_command = input("\nEnter a command: ")
+        if input_command.strip() in ["-h", "--help"]:
+            parser.print_help()
+            input("Press Enter to exit...")
+        else:
+            # If input is not empty, split and pass the arguments to sys.argv and re-run main()
+            if input_command.strip():
+                sys.argv = [sys.argv[0]] + input_command.split()
+                main()
+            else:
+                print("\nNo command provided. Exiting.")
+                input("Press Enter to exit...")
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except Exception as e:
+        print(f"An error occurred: {e}")
+        input("Press Enter to exit...")
+
+# COMMAND TO BUILD: pyinstaller --onefile --add-data "src;src" --add-data ".env;." main.py
