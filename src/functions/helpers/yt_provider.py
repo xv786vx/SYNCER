@@ -84,7 +84,6 @@ class YoutubeProvider(Provider):
 
 
         clean_track_name, artists = preprocessv3(track_name, artists)[0], preprocessv2(artists)
-        print(f"query: {clean_track_name} {artists}")
         query = f"{clean_track_name} {artists}"
 
         request = self.youtube.search().list(q=query, part="snippet", type="video", maxResults=1)
@@ -95,26 +94,10 @@ class YoutubeProvider(Provider):
 
             for item in response['items']:
                 artist_names = preprocessv2(item['snippet']['channelTitle'])
-                print(f"yt artist names: {artist_names}")
-                print(f"sp artist names: {artists}")
                 video_title, artist_names = preprocessv4(preprocessv2(item['snippet']['title']), artists, artist_names)
-
-                print("video title: ", video_title)
-
-                #region
-                # print(f'yt song title: {video_title}, yt old artist_names: {artist_names}')
-                # video_title = preprocessv2(item['snippet']['title'])
-
-                # print(f'old artist_names: {artist_names}')
-
-                # if artist_names in video_title or video_title in artist_names:
-                #     artist_names = preprocessv3(item['snippet']['title'], artists)[1]
-                
-                # print(f'new artist_names: {artist_names}')
-                #endregion      
+   
                 track_names_match = max(fuzzy_matchv3(video_title, track_name), fuzzy_matchv3(video_title, clean_track_name))       
                 artist_match = fuzzy_matchv3(artist_names, artists)
-            
 
 
                 if track_names_match >= best_match[1] and artist_match >= best_match[2]:
@@ -125,7 +108,7 @@ class YoutubeProvider(Provider):
                     best_match[2] = artist_match
                     best_match[3] = video_title
                     best_match[4] = artist_names
-            print(best_match)
+
             if best_match[1] > 70 and best_match[2] > 65:
                 print(f"final song title (yt): {best_match[3]}, song title (sp): {track_name.lower()}")
                 print(f"final artist names (yt): {best_match[4]}, artist names (sp): {artists}")

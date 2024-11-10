@@ -45,7 +45,6 @@ def preprocessv2(text):
     filtered_tokens = [token for token in tokens if token not in stopwords]
     
     final_text = " ".join(filtered_tokens)
-    print("preprocessv2:", final_text)
     
     return final_text
 
@@ -71,14 +70,12 @@ def preprocessv3(song_title, sp_artists):
         sp_artists = [artist.lower() for artist in sp_artists]
 
     all_stopwords = stopwords | set(sp_artists)
-    # print(all_stopwords)
 
     cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
     tokens = cleaned_song_title.split()
-    # print(tokens)
+
     new_artists = ", ".join([token for token in tokens if token in all_stopwords])
     filtered_tokens = [token for token in tokens if token not in all_stopwords]
-    # print(filtered_tokens)
 
     final_text = " ".join(filtered_tokens)
     return final_text, new_artists
@@ -123,15 +120,7 @@ def preprocessv4(song_title, sp_artists, yt_artists):
         combined_string = ' '.join(map(str, yt_artists))
         yt_artists = re.split(r'[^a-zA-Z0-9]+', combined_string.strip())
     
-    print(f"song_title: {song_title}")
-    print(f"sp_artists: {sp_artists}")
-    print(f"yt_artists: {yt_artists}")
 
-    # all_stopwords = stopwords | set(sp_artists)
-    # # print(all_stopwords)
-
-    # cleaned_song_title = re.sub(r'[^a-zA-Z0-9\s]', '', song_title.lower())
-    # tokens = cleaned_song_title.split()
     remove_from_title = []
     for token in song_title:
         if token in sp_artists and token not in yt_artists:
@@ -141,17 +130,12 @@ def preprocessv4(song_title, sp_artists, yt_artists):
             remove_from_title.append(token)
     
     song_title = [token for token in song_title if token not in remove_from_title]
-            
-
-    # # print(tokens)
     song_title = [token for token in song_title if token not in stopwords or token not in sp_artists]
-    # # print(filtered_tokens)
 
     song_title = ' '.join(song_title)
     sp_artists = ' '.join(sp_artists)
     yt_artists = ' '.join(yt_artists)
-    # final_text = " ".join(filtered_tokens)
-    # new_yt_artists = ', '.join(sorted(yt_artists))
+
     return song_title, yt_artists
 
 #%%
