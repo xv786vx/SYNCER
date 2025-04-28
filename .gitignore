@@ -11,8 +11,8 @@ env/
 *.pyc
 
 # token file for YouTube API credentials
-token.json
-desktop_client_secrets.json
+**/token.json
+**/desktop_client_secrets.json
 
 # spotify .cache that contains token 
 *.cache
