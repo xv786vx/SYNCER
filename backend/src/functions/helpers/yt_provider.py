@@ -4,6 +4,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 import yt_dlp
+import json
 
 from .provider import Provider
 from .provider import preprocessv2, preprocessv3, preprocessv4, fuzzy_matchv3
@@ -24,49 +25,123 @@ yt_redirect_uri = os.getenv("YT_REDIRECT_URIS")
 class YoutubeProvider(Provider):
     def __init__(self):
         scopes =   ['https://www.googleapis.com/auth/youtube.readonly',
-                        'https://www.googleapis.com/auth/youtube']
+                    'https://www.googleapis.com/auth/youtube']
         
 
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         token_dir = os.path.join(root_dir, 'auth_tokens')
         os.makedirs(token_dir, exist_ok=True)
         TOKEN_FILE = os.path.join(token_dir, 'token.json')
+        CLIENT_SECRETS_FILE = os.path.join(token_dir, 'desktop_client_secrets.json')
+
 
         credentials = None
         
         # load credentials from token file if it exists
         if os.path.exists(TOKEN_FILE):
-            credentials = Credentials.from_authorized_user_file(TOKEN_FILE, scopes=scopes)
-            if credentials and credentials.expired and credentials.refresh_token:
-                try:
-                    credentials.refresh(Request())
-                except RefreshError:
-                    print("Failed to refresh token.")
-                    credentials = None
-        
-        # if not valid credentials available, prompt user to authenticate
+            try:
+                print("Found existing token, attempting to use it...")
+                credentials = Credentials.from_authorized_user_file(TOKEN_FILE, scopes=scopes)
+                # Try refreshing ONLY if expired
+                if credentials and credentials.expired and credentials.refresh_token:
+                    try:
+                        print("Refreshing expired token...")
+                        credentials.refresh(Request())
+                        print("Successfully refreshed existing token.")
+                        # Save the refreshed credentials
+                        with open(TOKEN_FILE, "w") as token_file:
+                            token_file.write(credentials.to_json())
+                    except RefreshError as re:
+                        print(f"Refresh token failed during load: {re}. Deleting token and starting new auth flow.")
+                        credentials = None
+                        if os.path.exists(TOKEN_FILE):
+                            os.remove(TOKEN_FILE)
+                # --- ADDED: Check if token is valid even if not expired ---
+                elif credentials and not credentials.valid:
+                     print("Existing token is invalid. Deleting token and starting new auth flow.")
+                     credentials = None
+                     if os.path.exists(TOKEN_FILE):
+                         os.remove(TOKEN_FILE)
+
+            except Exception as e:
+                print(f"Error loading credentials: {e}. Deleting token and starting new auth flow.")
+                credentials = None
+                if os.path.exists(TOKEN_FILE):
+                    os.remove(TOKEN_FILE)
+        # --- End of token loading ---
+
+        # Start new auth flow if needed
         if not credentials or not credentials.valid:
-            flow = InstalledAppFlow.from_client_config(
-                {
-                    "web": {
-                        "client_id": yt_client_id,
-                        "project_id": yt_project_id,
-                        "auth_uri": yt_auth_uri,
-                        "token_uri": yt_token_uri,
-                        "auth_provider_x509_cert_url": yt_auth_provider_x509_cert_url,
-                        "client_secret": yt_client_secret,
-                        "redirect_uris": [yt_redirect_uri],
-                    }
-                },
-                scopes = scopes
-            )
-            credentials = flow.run_local_server(port=3000)
-            
-            # save credentials to token file for later use
-            with open(TOKEN_FILE, "w") as token_file:
-                token_file.write(credentials.to_json())
+            print("Starting new YouTube authentication flow using client secrets file...")
+            try:
+                if not os.path.exists(CLIENT_SECRETS_FILE):
+                     raise FileNotFoundError(f"Client secrets file not found at {CLIENT_SECRETS_FILE}.")
+
+                flow = InstalledAppFlow.from_client_secrets_file(
+                    CLIENT_SECRETS_FILE,
+                    scopes=scopes
+                )
+
+                credentials = flow.run_local_server(
+                    port=0,
+                    access_type='offline',
+                    prompt='consent'
+                )
+
+                # --- REMOVED Immediate Refresh Check ---
+
+                # Save the new credentials
+                with open(TOKEN_FILE, "w") as token_file:
+                    token_file.write(credentials.to_json())
+                print("New authentication successful! Token saved.")
+
+            except Exception as e:
+                print(f"Authentication failed: {e}")
+                raise
+
+        # Build the YouTube API client ONCE
+        try:
+            self.youtube = build('youtube', 'v3', credentials=credentials)
+            # --- REMOVED ALL API TESTS FROM __init__ ---
+            print("YouTube API client built successfully.")
+        except Exception as e:
+            error_details = f"Error: {e}"
+            if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
+                 error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
+            print(f"Error building YouTube API client: {error_details}")
+            raise
         
-        self.youtube = build('youtube', 'v3', credentials=credentials)
+        # Build the YouTube API client
+        try:
+            self.youtube = build('youtube', 'v3', credentials=credentials)
+            # Test connection 1: Channels
+            print("Testing YouTube API connection (Channels)...")
+            test_request_channels = self.youtube.channels().list(part="snippet", mine=True, maxResults=1)
+            test_response_channels = test_request_channels.execute()
+            print("YouTube API connection successful (Channels)!")
+
+            # --- ADDED: Test connection 2: Playlists ---
+            print("Testing YouTube API connection (Playlists)...")
+            test_request_playlists = self.youtube.playlists().list(part="snippet", mine=True, maxResults=1)
+            test_response_playlists = test_request_playlists.execute()
+            print("YouTube API connection successful (Playlists)!")
+            # --- END OF ADDED TEST ---
+
+        except Exception as e:
+            error_details = f"Error: {e}"
+            if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
+                 error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
+            # Be more specific about which test failed
+            if 'test_request_playlists' in locals():
+                 print(f"CRITICAL ERROR during Playlists API test after successful Channels test: {error_details}")
+            elif 'test_request_channels' in locals():
+                 print(f"Error connecting to YouTube API during initial Channels test: {error_details}")
+            else:
+                 print(f"Error building YouTube API client or during initial connection: {error_details}")
+            raise
+        
+        # Build the YouTube API client
+        # self.youtube = build('youtube', 'v3', credentials=credentials)
 
 
     def search_auto(self, track_name, artists) -> list:
@@ -141,6 +216,7 @@ class YoutubeProvider(Provider):
 
         request = self.youtube.search().list(q=query, part="snippet", type="video", maxResults=6)
         response = request.execute()
+
         if response['items']:
             for item in response['items']:
                 video_title = item['snippet']['title']
@@ -153,28 +229,53 @@ class YoutubeProvider(Provider):
                 
                 else:
                     continue
+            # If you loop through all options and say 'n' to everything:
+            print(f"Could not find the song '{track_name}' by '{artists}'.")
+            return None
         else:
             print("err: result didn't match given structure")
             input("Press Enter to continue...")
             return None
 
 
-    def get_playlists(self):
-        """Obtains a list of the user's Youtube playlists
+    # def get_playlists(self):
+    #     """Obtains a list of the user's Youtube playlists
 
-        Returns:
-            list[]: a list containing the name, id, description, and image of each playlist.
-        """
-        request = self.youtube.playlists().list(part="snippet", mine=True)
-        response = request.execute()
-        return [
-            {
-                'title': pl['snippet']['title'],
-                'id': pl['id'],
-                'description': pl['snippet'].get('description', ""),
-                'image': pl['snippet']['thumbnails']['default']['url']
-            }
-            for pl in response.get("items", [])]
+    #     Returns:
+    #         list[]: a list containing the name, id, description, and image of each playlist.
+    #     """
+    #     request = self.youtube.playlists().list(part="snippet", mine=True)
+    #     response = request.execute()
+    #     return [
+    #         {
+    #             'title': pl['snippet']['title'],
+    #             'id': pl['id'],
+    #             'description': pl['snippet'].get('description', ""),
+    #             'image': pl['snippet']['thumbnails']['default']['url']
+    #         }
+    #         for pl in response.get("items", [])]
+    
+    def get_playlists(self):
+        """Obtains a list of the user's Youtube playlists"""
+        try: # Add try...except here for detailed error on this specific call
+            print("Attempting to execute self.youtube.playlists().list...")
+            request = self.youtube.playlists().list(part="snippet", mine=True, maxResults=50) # Added maxResults
+            response = request.execute()
+            print(f"Successfully executed playlists().list. Found {len(response.get('items', []))} items.")
+            return [
+                {
+                    'title': pl['snippet']['title'],
+                    'id': pl['id'],
+                    'description': pl['snippet'].get('description', ""),
+                    'image': pl['snippet']['thumbnails']['default']['url']
+                }
+                for pl in response.get("items", [])]
+        except Exception as e:
+             error_details = f"Error: {e}"
+             if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
+                  error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
+             print(f"ERROR IN get_playlists during playlists().list execution: {error_details}")
+             return None # Return None on error
     
 
     def get_playlist_by_name(self, playlist_name):
@@ -187,6 +288,10 @@ class YoutubeProvider(Provider):
             dict: {'title': playlist name, 'id': playlist id, 'description': playlist description, 'image': playlist image}
         """
         playlists = self.get_playlists()
+        if playlists is None:
+            print(f"Could not retrieve playlists. Please check your authorization.")
+            return None
+        
         for pl in playlists:
             if pl['title'].lower() == playlist_name.lower():  # Case-insensitive comparison
                 return {

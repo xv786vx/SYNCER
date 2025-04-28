@@ -1,5 +1,5 @@
-from src.functions.helpers.sp_provider import SpotifyProvider
-from src.functions.helpers.yt_provider import YoutubeProvider
+from helpers.sp_provider import SpotifyProvider
+from helpers.yt_provider import YoutubeProvider
 
 def merge_playlists(yt_name, sp_name, merge_name):
     yt = YoutubeProvider()

@@ -1,5 +1,5 @@
-from src.functions.helpers.sp_provider import SpotifyProvider
-from src.functions.helpers.yt_provider import YoutubeProvider
+from helpers.sp_provider import SpotifyProvider
+from helpers.yt_provider import YoutubeProvider
 
 
 def sync_sp_to_yt(playlist_to_modify):
@@ -42,3 +42,6 @@ def sync_sp_to_yt(playlist_to_modify):
                 continue
 
     yt.add_to_playlist(yt.get_playlist_by_name(pl_info['title'])['id'], t_to_sync_yt)
+
+# test case: Free Kutter (feat. Jay Electronica)
+

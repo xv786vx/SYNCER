@@ -1,13 +1,18 @@
-from src.functions.helpers.sp_provider import SpotifyProvider
-from src.functions.helpers.yt_provider import YoutubeProvider
+from helpers.sp_provider import SpotifyProvider
+from helpers.yt_provider import YoutubeProvider
 
 
 def sync_yt_to_sp(playlist_to_modify):
     yt = YoutubeProvider()
+    print('debug point')
     sp = SpotifyProvider()
 
 
     pl_info = yt.get_playlist_by_name(playlist_to_modify)
+    if pl_info is None:
+        print(f"Could not find or access playlist '{playlist_to_modify}'")
+        return
+    
     print(f"YOUTUBE playlist chosen: {pl_info['title']}")
 
     # 3. check if same playlist exists in spotify, if not then make it
