@@ -108,5 +108,3 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"An error occurred: {e}")
         input("Press Enter to exit...")
-
-# COMMAND TO BUILD: pyinstaller --onefile --upx-dir "C:/upx-4.2.4-win64" --add-data "src;src" --add-data ".env;." --add-data "C:/ffmpeg/bin/ffmpeg.exe;." main.py

@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "SYNCER",
+  "version": "1.0",
+  "description": "Sync your Spotify playlists to YouTube playlists",
+  "permissions": ["storage", "scripting", "activeTab"],
+  "host_permissions": ["http://localhost:3000/"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html"
+  }
+}
