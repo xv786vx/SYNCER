@@ -2,9 +2,18 @@ import reactLogo from './assets/react.svg'
 import viteLogo from '/vite.svg'
 import './App.css'
 import { useState } from 'react'
+import axios from 'axios'
 
 function App() {
   const [ colour, setColour ] = useState('')
+  const [ data, setData ] = useState({
+    name: ''
+  })
+
+  const fetchData = async () => {
+    const response = await axios.get('http://127.0.0.1:8000')
+    setData(response.data)
+  }
 
 
   const onclick = async () => {
@@ -35,8 +44,15 @@ function App() {
         <button onClick={() => onclick()}>
           click me
         </button>
+
+        <button onClick={() => fetchData()}>
+          also click me
+        </button>
         <p>
           Edit <code>src/App.tsx</code> and save to test HMR
+        </p>
+        <p>
+          {data.name}
         </p>
       </div>
       <p className="read-the-docs">

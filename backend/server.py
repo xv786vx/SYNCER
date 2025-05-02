@@ -1,6 +1,7 @@
 # Example using FastAPI
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+import json
 
 app = FastAPI()
 
@@ -13,7 +14,10 @@ app.add_middleware(
 )
 @app.get("/")
 def root():
-    return {"message": "Welcome to SYNCER! brah brah"}
+    data = {
+        'name': 'Syncer'
+    }
+    return data
 
 
 @app.get("/api/sync_playlist")
