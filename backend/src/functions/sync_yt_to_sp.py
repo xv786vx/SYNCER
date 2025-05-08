@@ -1,5 +1,5 @@
-from helpers.sp_provider import SpotifyProvider
-from helpers.yt_provider import YoutubeProvider
+from src.functions.helpers.sp_provider import SpotifyProvider
+from src.functions.helpers.yt_provider import YoutubeProvider
 
 
 def sync_yt_to_sp(playlist_to_modify):

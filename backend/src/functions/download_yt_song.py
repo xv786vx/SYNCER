@@ -1,4 +1,4 @@
-from helpers.yt_provider import YoutubeProvider
+from src.functions.helpers.yt_provider import YoutubeProvider
 
 def download_yt_song(song_name, artists):
     print("Downloading YouTube song...")
