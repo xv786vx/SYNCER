@@ -6,6 +6,19 @@ import { getThing } from './get'
 import { FaSpotify } from 'react-icons/fa'
 import { SiYoutube } from 'react-icons/si'
 
+interface Process {
+  id: string;
+  type: string;
+  status: 'pending' | 'in-progress' | 'completed' | 'error';
+  message: string;
+  interactive?: {
+    type: 'search' | 'skip';
+    songName: string;
+    onSearch: () => void;
+    onSkip: () => void;
+  };
+}
+
 function App() {
   const [data, setData] = useState({ name: '', authenticated: false })
   const [activeTab, setActiveTab] = useState("1");
@@ -15,6 +28,25 @@ function App() {
   const [mergeSpPlaylist, setMergeSpPlaylist] = useState('')
   const [ytPlaylist, setYtPlaylist] = useState('')
   const [songTitle, setSongTitle] = useState('')
+  const [processes, setProcesses] = useState<Process[]>([])
+
+  const addProcess = (type: string, message: string) => {
+    const id = Date.now().toString();
+    setProcesses(prev => [...prev, { id, type, status: 'pending', message }]);
+    return id;
+  };
+
+  const updateProcess = (id: string, status: Process['status'], message?: string, interactive?: Process['interactive']) => {
+    setProcesses(prev => prev.map(p => 
+      p.id === id ? { ...p, status, message: message || p.message, interactive } : p
+    ));
+  };
+
+  const removeProcess = (id: string) => {
+    setTimeout(() => {
+      setProcesses(prev => prev.filter(p => p.id !== id));
+    }, 2000);
+  };
 
   const fetchStatus = async () => {
     const response = await getThing('http://127.0.0.1:8000/')
@@ -34,28 +66,97 @@ function App() {
   // }
 
   const syncSpToYt = async () => {
-    const response = await getThing(`http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(spPlaylist)}`)
-    setResult(response.result)
-    setSpPlaylist('')
+    const processId = addProcess('sync', `Syncing Spotify playlist "${spPlaylist}" to YouTube...`);
+    try {
+      const response = await getThing(`http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(spPlaylist)}`)
+      if (response.requires_manual_search) {
+        updateProcess(processId, 'in-progress', 'Manual search required', {
+          type: 'search',
+          songName: response.song_name,
+          onSearch: () => handleSearch(processId, response.song_name),
+          onSkip: () => handleSkip(processId, response.song_name)
+        });
+      } else {
+        setResult(response.result)
+        updateProcess(processId, 'completed', 'Sync completed successfully!')
+        removeProcess(processId)
+        setSpPlaylist('')
+      }
+    } catch {
+      updateProcess(processId, 'error', 'Failed to sync playlist')
+      setResult('Error: Failed to sync playlist')
+    }
   }
 
   const syncYtToSp = async () => {
-    const response = await getThing(`http://127.0.0.1:8000/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(ytPlaylist)}`)
-    setResult(response.result)
-    setYtPlaylist('')
+    const processId = addProcess('sync', `Syncing YouTube playlist "${ytPlaylist}" to Spotify...`);
+    try {
+      const response = await getThing(`http://127.0.0.1:8000/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(ytPlaylist)}`)
+      if (response.requires_manual_search) {
+        updateProcess(processId, 'in-progress', 'Manual search required', {
+          type: 'search',
+          songName: response.song_name,
+          onSearch: () => handleSearch(processId, response.song_name),
+          onSkip: () => handleSkip(processId, response.song_name)
+        });
+      } else {
+        setResult(response.result)
+        updateProcess(processId, 'completed', 'Sync completed successfully!')
+        removeProcess(processId)
+        setYtPlaylist('')
+      }
+    } catch {
+      updateProcess(processId, 'error', 'Failed to sync playlist')
+      setResult('Error: Failed to sync playlist')
+    }
   }
 
   const mergePlaylists = async () => {
-    const response = await getThing(`http://127.0.0.1:8000/api/merge_playlists?playlist1=${encodeURIComponent(mergeYtPlaylist)}&playlist2=${encodeURIComponent(mergeSpPlaylist)}`)
-    setResult(response.result)
-    setMergeYtPlaylist('')
-    setMergeSpPlaylist('')
+    const processId = addProcess('merge', `Merging playlists "${mergeYtPlaylist}" and "${mergeSpPlaylist}"...`);
+    try {
+      const response = await getThing(`http://127.0.0.1:8000/api/merge_playlists?playlist1=${encodeURIComponent(mergeYtPlaylist)}&playlist2=${encodeURIComponent(mergeSpPlaylist)}`)
+      setResult(response.result)
+      updateProcess(processId, 'completed', 'Playlists merged successfully!')
+      removeProcess(processId)
+      setMergeYtPlaylist('')
+      setMergeSpPlaylist('')
+    } catch {
+      updateProcess(processId, 'error', 'Failed to merge playlists')
+      setResult('Error: Failed to merge playlists')
+    }
   }
 
   const downloadYtSong = async () => {
-    const response = await getThing(`http://127.0.0.1:8000/api/download_yt_song?title=${encodeURIComponent(songTitle)}`)
-    setResult(response.result)
-    setSongTitle('')
+    const processId = addProcess('download', `Downloading "${songTitle}"...`);
+    try {
+      const response = await getThing(`http://127.0.0.1:8000/api/download_yt_song?title=${encodeURIComponent(songTitle)}`)
+      setResult(response.result)
+      updateProcess(processId, 'completed', 'Download completed successfully!')
+      removeProcess(processId)
+      setSongTitle('')
+    } catch {
+      updateProcess(processId, 'error', 'Failed to download song')
+      setResult('Error: Failed to download song')
+    }
+  }
+
+  const handleSearch = async (processId: string, songName: string) => {
+    try {
+      const response = await getThing(`http://127.0.0.1:8000/api/search_song?title=${encodeURIComponent(songName)}`)
+      if (response.success) {
+        updateProcess(processId, 'completed', `Successfully matched "${songName}"`)
+        removeProcess(processId)
+      } else {
+        updateProcess(processId, 'error', `No match found for "${songName}"`)
+      }
+    } catch {
+      updateProcess(processId, 'error', `Failed to search for "${songName}"`)
+    }
+  }
+
+  const handleSkip = (processId: string, songName: string) => {
+    updateProcess(processId, 'completed', `Skipped "${songName}"`)
+    removeProcess(processId)
   }
 
   useEffect(() => {
@@ -64,7 +165,36 @@ function App() {
   }, [])
 
   return (
-    <div className="flex h-screen bg-neutral-800 text-white">
+    <div className="flex w-full h-full min-h-0 min-w-0 bg-neutral-800 text-white relative">
+      {/* Process Overlay - contained to extension window */}
+      {processes.length > 0 && (
+        <div className="absolute inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center">
+          <div className="w-full max-w-[360px] p-4">
+            <h3 className="text-lg font-semibold mb-4 text-center">Processes</h3>
+            <div className="space-y-3">
+              {processes.map(process => (
+                <div
+                  key={process.id}
+                  className={`text-sm p-3 rounded-lg ${
+                    process.status === 'completed' ? 'bg-green-900' :
+                    process.status === 'error' ? 'bg-red-900' :
+                    process.status === 'in-progress' ? 'bg-blue-900' :
+                    'bg-neutral-700'
+                  }`}
+                >
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="font-medium">{process.message}</span>
+                    {process.status === 'in-progress' && !process.interactive && (
+                      <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Sidebar */}
       <div className="flex flex-col flex-shrink-0 w-[144px] bg-neutral-700 gap-y-2 p-3">
         <h1 className="text-white text-center text-2xl font-bold">SYNCER</h1>
