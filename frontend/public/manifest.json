@@ -8,6 +8,6 @@
   "permissions": ["scripting", "activeTab"],
   "host_permissions": ["http://*/*", "https://*/*"],
   "icons": {
-    "32": "vite.svg"
+    "32": "pixil-frame-1.png"
   }
 }
