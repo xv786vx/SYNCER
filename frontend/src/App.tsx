@@ -188,6 +188,22 @@ function App() {
                       <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
                     )}
                   </div>
+                  {process.interactive && (
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={process.interactive.onSearch}
+                        className="flex-1 py-1 px-2 bg-blue-600 hover:bg-blue-500 rounded text-xs"
+                      >
+                        Search "{process.interactive.songName}"
+                      </button>
+                      <button
+                        onClick={process.interactive.onSkip}
+                        className="flex-1 py-1 px-2 bg-neutral-600 hover:bg-neutral-500 rounded text-xs"
+                      >
+                        Skip
+                      </button>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>

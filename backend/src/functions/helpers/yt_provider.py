@@ -4,7 +4,7 @@ from google.oauth2.credentials import Credentials
 from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 import yt_dlp
-import json
+from youtubesearchpython import VideosSearch
 
 from .provider import Provider
 from .provider import preprocessv2, preprocessv3, preprocessv4, fuzzy_matchv3
@@ -112,36 +112,33 @@ class YoutubeProvider(Provider):
             raise
         
         # Build the YouTube API client
-        try:
-            self.youtube = build('youtube', 'v3', credentials=credentials)
-            # Test connection 1: Channels
-            print("Testing YouTube API connection (Channels)...")
-            test_request_channels = self.youtube.channels().list(part="snippet", mine=True, maxResults=1)
-            test_response_channels = test_request_channels.execute()
-            print("YouTube API connection successful (Channels)!")
+        # try:
+        #     self.youtube = build('youtube', 'v3', credentials=credentials)
+        #     # Test connection 1: Channels
+        #     print("Testing YouTube API connection (Channels)...")
+        #     test_request_channels = self.youtube.channels().list(part="snippet", mine=True, maxResults=1)
+        #     test_response_channels = test_request_channels.execute()
+        #     print("YouTube API connection successful (Channels)!")
 
-            # --- ADDED: Test connection 2: Playlists ---
-            print("Testing YouTube API connection (Playlists)...")
-            test_request_playlists = self.youtube.playlists().list(part="snippet", mine=True, maxResults=1)
-            test_response_playlists = test_request_playlists.execute()
-            print("YouTube API connection successful (Playlists)!")
-            # --- END OF ADDED TEST ---
+        #     # --- ADDED: Test connection 2: Playlists ---
+        #     print("Testing YouTube API connection (Playlists)...")
+        #     test_request_playlists = self.youtube.playlists().list(part="snippet", mine=True, maxResults=1)
+        #     test_response_playlists = test_request_playlists.execute()
+        #     print("YouTube API connection successful (Playlists)!")
+        #     # --- END OF ADDED TEST ---
 
-        except Exception as e:
-            error_details = f"Error: {e}"
-            if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
-                 error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
-            # Be more specific about which test failed
-            if 'test_request_playlists' in locals():
-                 print(f"CRITICAL ERROR during Playlists API test after successful Channels test: {error_details}")
-            elif 'test_request_channels' in locals():
-                 print(f"Error connecting to YouTube API during initial Channels test: {error_details}")
-            else:
-                 print(f"Error building YouTube API client or during initial connection: {error_details}")
-            raise
-        
-        # Build the YouTube API client
-        # self.youtube = build('youtube', 'v3', credentials=credentials)
+        # except Exception as e:
+        #     error_details = f"Error: {e}"
+        #     if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
+        #          error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
+        #     # Be more specific about which test failed
+        #     if 'test_request_playlists' in locals():
+        #          print(f"CRITICAL ERROR during Playlists API test after successful Channels test: {error_details}")
+        #     elif 'test_request_channels' in locals():
+        #          print(f"Error connecting to YouTube API during initial Channels test: {error_details}")
+        #     else:
+        #          print(f"Error building YouTube API client or during initial connection: {error_details}")
+        #     raise
 
 
     def search_auto(self, track_name, artists) -> list:
@@ -161,15 +158,15 @@ class YoutubeProvider(Provider):
         clean_track_name, artists = preprocessv3(track_name, artists)[0], preprocessv2(artists)
         query = f"{clean_track_name} {artists}"
 
-        request = self.youtube.search().list(q=query, part="snippet", type="video", maxResults=1)
-        response = request.execute()
-        if response['items']:
+        search = VideosSearch(query, limit=3)
+        response = search.result().get('result', [])
 
+        if response:
             best_match = ["", 0, 0, "", ""]
 
-            for item in response['items']:
-                artist_names = preprocessv2(item['snippet']['channelTitle'])
-                video_title, artist_names = preprocessv4(preprocessv2(item['snippet']['title']), artists, artist_names)
+            for item in response:
+                artist_names = preprocessv2(item['channel']['name'])
+                video_title, artist_names = preprocessv4(preprocessv2(item['title']), artists, artist_names)
    
                 track_names_match = max(fuzzy_matchv3(video_title, track_name), fuzzy_matchv3(video_title, clean_track_name))       
                 artist_match = fuzzy_matchv3(artist_names, artists)
@@ -178,7 +175,7 @@ class YoutubeProvider(Provider):
                 if track_names_match >= best_match[1] and artist_match >= best_match[2]:
                     print(f"MATCH FOUND FOR {track_name} BY {artists}")
                     print(f"{video_title} BY {artist_names}")
-                    best_match[0] = item['id']['videoId']
+                    best_match[0] = item['id']
                     best_match[1] = track_names_match
                     best_match[2] = artist_match
                     best_match[3] = video_title
@@ -214,27 +211,21 @@ class YoutubeProvider(Provider):
 
         query = f"{clean_track_name} {artists}"
 
-        request = self.youtube.search().list(q=query, part="snippet", type="video", maxResults=6)
-        response = request.execute()
+        search = VideosSearch(query, limit=6)
+        response = search.result().get('result', [])
 
-        if response['items']:
-            for item in response['items']:
-                video_title = item['snippet']['title']
-                artist_names = item['snippet']['channelTitle']
-                
-                # check if the video title or description contains the song title
+        if response:
+            for item in response:
+                video_title = item['title']
+                artist_names = item['channel']['name']
+
                 choice = input(f"Is this the song you were looking for? {video_title} by {artist_names} (y/n): ")
-                if choice == 'y':
-                    return item['id']['videoId']
-                
-                else:
-                    continue
-            # If you loop through all options and say 'n' to everything:
+                if choice.lower() == 'y':
+                    return item['id']
             print(f"Could not find the song '{track_name}' by '{artists}'.")
             return None
         else:
-            print("err: result didn't match given structure")
-            input("Press Enter to continue...")
+            print("err: no items returned")
             return None
 
 
@@ -298,7 +289,7 @@ class YoutubeProvider(Provider):
                     'title': pl['title'],
                     'id': pl['id'],
                     'description': pl.get('description', ''),
-                    'image': pl.get('thumbnail', None),
+                    'image': pl.get('image', None),
                 }
         return None 
 
@@ -387,25 +378,27 @@ class YoutubeProvider(Provider):
     
 
     def download_song(self, track_id):
-        """YT_PROVIDER EXCLUSIVE. Downloads a song from Youtube given a video id.
-            ***FFMPEG IS REQUIRED FOR INSTALLATION, WORKING ON BUNDLING THIS INTO THE PACKAGE***
-
-        Args:
-            track_id (str): a track id corresponding to a Youtube video.
-        """
-        video_url = f"https://www.youtube.com/watch?v={track_id}"
-
+        """Downloads a song from Youtube given a video ID."""
+        url = f"https://www.youtube.com/watch?v={track_id}"
         ydl_opts = {
-            'format': 'bestaudio[ext=mp4]',
+            'format': 'bestaudio/best',
+            'outtmpl': f'songs/%(title)s.%(ext)s',
             'postprocessors': [{
                 'key': 'FFmpegExtractAudio',
                 'preferredcodec': 'mp3',
                 'preferredquality': '192',
             }],
-            'outtmpl': 'Downloads/%(title)s.%(ext)s',
+            'quiet': False,
+            'noplaylist': True,
         }
 
-        yt_dlp.YoutubeDL(ydl_opts).download([video_url])
+        try:
+            os.makedirs('songs', exist_ok=True)
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([url])
+            print(f"Downloaded song from {url}")
+        except Exception as e:
+            print(f"Failed to download song from {url}. Error: {e}")
 
 
     def download_playlist(self, playlist_id, playlist_name):
