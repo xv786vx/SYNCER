@@ -13,10 +13,10 @@ sys.path.insert(0, os.path.join(os.getcwd(), 'backend', 'src'))
 sys.path.insert(0, os.path.join(os.getcwd(), 'backend', 'src', 'functions'))
 sys.path.insert(0, os.path.join(os.getcwd(), 'backend', 'src', 'functions', 'helpers'))
 
-from functions.sync_sp_to_yt import sync_sp_to_yt
-from functions.sync_yt_to_sp import sync_yt_to_sp
-from functions.merge_playlists import merge_playlists
-from functions.download_yt_song import download_yt_song
+from src.functions.sync_sp_to_yt import sync_sp_to_yt
+from src.functions.sync_yt_to_sp import sync_yt_to_sp
+from src.functions.merge_playlists import merge_playlists
+from src.functions.download_yt_song import download_yt_song
 
 def display_main_menu():
     """Displays the main menu with available commands."""

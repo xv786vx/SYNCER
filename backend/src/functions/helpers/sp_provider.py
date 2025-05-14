@@ -2,7 +2,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyOAuth, SpotifyOauthError
 
 from .provider import Provider
-from .provider import preprocessv2, preprocessv3, preprocessv4, fuzzy_matchv3
+from .provider import tokenize, preprocess_title, fuzzy_match, is_match
 
 import os
 from dotenv import load_dotenv
@@ -90,58 +90,121 @@ class SpotifyProvider(Provider):
     
     
     def search_auto(self, track_name, artists) -> list:
-        """algorithmically processes track_name and artists from YouTube to search for equivalent Spotify track.
-
-        Args:
-            track_name (str): the video title scraped from a given YouTube video.
-            artists (str): a single channel name scraped from a given YouTube video.
-
-        Returns:
-            list[]: returns a 
-                [song uri, track_name match score, artist match score, song title, artist names]
-            if a suitable match is found, else None.
-        """
-
-        clean_track_name, artists = preprocessv3(track_name, artists)[0], preprocessv2(artists)
-
-        query = f"{clean_track_name} {artists}"
-
-        results = self.sp.search(q=query, limit=6, type='track')
-        if results['tracks']['items']:
-
-            best_match = ["", 0, 0, "", ""]
-
+        """algorithmically processes track_name and artists from YouTube to search for equivalent Spotify track."""
+        
+        print(f"\n[SEARCH_AUTO] Searching for: '{track_name}' by '{artists}'")
+        
+        # Try multiple search strategies
+        search_queries = [
+            f"{track_name} {artists}",
+            f"{preprocess_title(track_name)} {artists}",
+            f"{track_name}",  # Sometimes artist in title is enough
+        ]
+        
+        best_match = ["", 0, 0, "", ""]  # [uri, title_score, artist_score, title, artists]
+        all_tracks_found = []  # For debugging
+        
+        for i, query in enumerate(search_queries):
+            print(f"[SEARCH_AUTO] Query {i+1}: '{query}'")
+            results = self.sp.search(q=query, limit=10, type='track')
+            
+            if not results['tracks']['items']:
+                print(f"[SEARCH_AUTO] No results for query {i+1}")
+                continue
+            
             for track in results['tracks']['items']:
-                artist_names = [preprocessv2(artist['name']) for artist in track['artists']]
-                song_title = preprocessv3(track['name'], artist_names)[0]
-
-                clean_track_name, artists = preprocessv4(clean_track_name, artist_names, artists)
-
-                track_names_match = max(fuzzy_matchv3(song_title, track_name), fuzzy_matchv3(song_title, clean_track_name))
-                artist_match = max(fuzzy_matchv3(artist_name, artists) for artist_name in artist_names)
+                sp_track_title = track['name']
+                sp_artist_names = [artist['name'] for artist in track['artists']]
+                sp_artists_str = ', '.join(sp_artist_names)
                 
+                # Skip if we've already seen this track
+                if track['uri'] in [t[0] for t in all_tracks_found]:
+                    continue
                 
-                if track_names_match >= best_match[1] and artist_match >= best_match[2]:
-                    print(f"MATCH FOUND FOR {clean_track_name} BY {artists}")
-                    print(f"{song_title} BY {artist_names}")
-                    best_match[0] = track['uri']
-                    best_match[1] = track_names_match
-                    best_match[2] = artist_match
-                    best_match[3] = song_title
-                    best_match[4] = artist_names
-            
-            if best_match[1] > 70 and best_match[2] > 65:
-                print(f"final song title (sp): {best_match[3]}, song title (yt): {track_name.lower()}")
-                print(f"final artist names (sp): {best_match[4]}, artist names (yt): {artists}")
-                print("")
-                return best_match
-            
-            else: 
-                print("no suitable match found.")
-                return None
+                # Multiple scoring approaches for title
+                title_scores = []
+                
+                # 1. Direct fuzzy match
+                title_scores.append(fuzzy_match(sp_track_title.lower(), track_name.lower()))
+                
+                # 2. Clean title match (without feat/ft parts)
+                clean_sp_title = preprocess_title(sp_track_title)
+                clean_yt_title = preprocess_title(track_name)
+                title_scores.append(fuzzy_match(clean_sp_title, clean_yt_title))
+                
+                # 3. Handle featured artists in track names
+                if '(' in track_name and ('feat' in track_name.lower() or 'ft' in track_name.lower()):
+                    # Extract main title before parentheses
+                    main_title = track_name.split('(')[0].strip()
+                    title_scores.append(fuzzy_match(sp_track_title.lower(), main_title.lower()))
+                
+                # 4. Check if track titles contain similar words
+                sp_words = set(sp_track_title.lower().replace('(', ' ').replace(')', ' ').split())
+                yt_words = set(track_name.lower().replace('(', ' ').replace(')', ' ').split())
+                common_words = sp_words & yt_words
+                if len(common_words) > 0:
+                    word_score = (len(common_words) / max(len(sp_words), len(yt_words))) * 100
+                    title_scores.append(word_score)
+                
+                title_score = max(title_scores)
+                
+                # Artist matching with multiple approaches
+                artist_scores = []
+                
+                # Direct artist name matching
+                for sp_artist in sp_artist_names:
+                    artist_scores.append(fuzzy_match(sp_artist.lower(), artists.lower()))
+                    
+                    # Check if artist name appears in YouTube title (common on YouTube)
+                    if sp_artist.lower() in track_name.lower():
+                        artist_scores.append(85)
+                    
+                    # Check individual words of artist names
+                    for artist_word in sp_artist.lower().split():
+                        if len(artist_word) > 2 and artist_word in artists.lower():
+                            artist_scores.append(75)
+                
+                # Check if any part of the artist string matches
+                artist_scores.append(fuzzy_match(sp_artists_str.lower(), artists.lower()))
+                
+                artist_score = max(artist_scores) if artist_scores else 0
+                
+                # Calculate total score
+                total_score = 0.7 * title_score + 0.3 * artist_score
+                
+                print(f"[DEBUG] '{sp_track_title}' by {sp_artists_str}")
+                print(f"        Title scores: {title_scores} -> {title_score:.1f}")
+                print(f"        Artist scores: {artist_scores} -> {artist_score:.1f}")
+                print(f"        Total score: {total_score:.1f}")
+                
+                # Store all tracks for debugging
+                all_tracks_found.append((track['uri'], title_score, artist_score, sp_track_title, sp_artists_str, total_score))
+                
+                # Update best match
+                best_total_score = 0.7 * best_match[1] + 0.3 * best_match[2]
+                if total_score > best_total_score:
+                    best_match = [track['uri'], title_score, artist_score, sp_track_title, sp_artists_str]
+        
+        # Sort all found tracks by total score for debugging
+        all_tracks_found.sort(key=lambda x: x[5], reverse=True)
+        print(f"\n[DEBUG] Top 3 matches found:")
+        for i, (uri, t_score, a_score, title, artist, total) in enumerate(all_tracks_found[:3]):
+            print(f"  {i+1}. '{title}' by {artist} (T:{t_score:.1f}, A:{a_score:.1f}, Total:{total:.1f})")
+        
+        # More lenient thresholds with detailed output
+        title_threshold = 60  # Reduced from 70
+        artist_threshold = 40  # Reduced from 45
+        high_title_threshold = 80  # Reduced from 85
+        
+        if best_match[1] >= title_threshold and best_match[2] >= artist_threshold:
+            print(f"✓ ACCEPTED: '{best_match[3]}' by {best_match[4]} (Title: {best_match[1]:.1f}, Artist: {best_match[2]:.1f})")
+            return best_match
+        elif best_match[1] >= high_title_threshold:
+            print(f"✓ HIGH TITLE MATCH: '{best_match[3]}' by {best_match[4]} (Title: {best_match[1]:.1f}, Artist: {best_match[2]:.1f})")
+            return best_match
         else:
-            print("err: result didn't match given structure")
-            input("Press Enter to continue...")
+            print(f"✗ REJECTED: Best was '{best_match[3]}' by {best_match[4]} (Title: {best_match[1]:.1f}, Artist: {best_match[2]:.1f})")
+            print(f"   Needs: Title >= {title_threshold} AND Artist >= {artist_threshold}, OR Title >= {high_title_threshold}")
             return None
         
 
@@ -155,7 +218,7 @@ class SpotifyProvider(Provider):
         Returns:
             str: returns ONLY the Spotify track uri if a suitable match is found, else None.
         """
-        clean_track_name, artists = preprocessv2(track_name), preprocessv2(artists)
+        clean_track_name = preprocess_title(track_name, artists)
         
         query = f"{clean_track_name} {artists}"
 

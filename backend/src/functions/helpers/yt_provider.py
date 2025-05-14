@@ -7,7 +7,7 @@ import yt_dlp
 from youtubesearchpython import VideosSearch
 
 from .provider import Provider
-from .provider import preprocessv2, preprocessv3, preprocessv4, fuzzy_matchv3
+from .provider import tokenize, preprocess_title, fuzzy_match, is_match
 
 import os
 from dotenv import load_dotenv
@@ -142,57 +142,151 @@ class YoutubeProvider(Provider):
 
 
     def search_auto(self, track_name, artists) -> list:
-        """algorithmically processes track_name and artists from Spotify to search for equivalent Youtube video.
-
-        Args:
-            track_name (str): the song title scraped from a given Spotify track.
-            artists (str?): the artists scraped from a given Spotify track.
-
-        Returns:
-            list[]: returns a 
-                [video id, track_name match score, artist match score, video title, artist names]
-            if a suitable match is found, else None.
-        """
-
-
-        clean_track_name, artists = preprocessv3(track_name, artists)[0], preprocessv2(artists)
-        query = f"{clean_track_name} {artists}"
-
-        search = VideosSearch(query, limit=3)
-        response = search.result().get('result', [])
-
-        if response:
-            best_match = ["", 0, 0, "", ""]
-
-            for item in response:
-                artist_names = preprocessv2(item['channel']['name'])
-                video_title, artist_names = preprocessv4(preprocessv2(item['title']), artists, artist_names)
-   
-                track_names_match = max(fuzzy_matchv3(video_title, track_name), fuzzy_matchv3(video_title, clean_track_name))       
-                artist_match = fuzzy_matchv3(artist_names, artists)
-
-
-                if track_names_match >= best_match[1] and artist_match >= best_match[2]:
-                    print(f"MATCH FOUND FOR {track_name} BY {artists}")
-                    print(f"{video_title} BY {artist_names}")
-                    best_match[0] = item['id']
-                    best_match[1] = track_names_match
-                    best_match[2] = artist_match
-                    best_match[3] = video_title
-                    best_match[4] = artist_names
-
-            if best_match[1] > 70 and best_match[2] > 65:
-                print(f"final song title (yt): {best_match[3]}, song title (sp): {track_name.lower()}")
-                print(f"final artist names (yt): {best_match[4]}, artist names (sp): {artists}")
-                print("")
-                return best_match
+        """algorithmically processes track_name and artists from Spotify to search for equivalent Youtube video."""
+        
+        print(f"\n[YT_SEARCH_AUTO] Searching for: '{track_name}' by '{artists}'")
+        
+        # Try multiple search strategies
+        search_queries = [
+            f"{track_name} {artists}",
+            f"{preprocess_title(track_name)} {artists}",
+            f"{track_name}",  # Sometimes artist in title is enough
+            f"{artists} {track_name}",  # Try artist first
+        ]
+        
+        best_match = ["", 0, 0, "", ""]  # [video_id, title_score, artist_score, video_title, channel_name]
+        all_videos_found = []  # For debugging
+        
+        for i, query in enumerate(search_queries):
+            print(f"[YT_SEARCH_AUTO] Query {i+1}: '{query}'")
             
-            else: 
-                print("no suitable match found.")
-                return None
+            search = VideosSearch(query, limit=10)  # Increased limit
+            response = search.result().get('result', [])
+            
+            if not response:
+                print(f"[YT_SEARCH_AUTO] No results for query {i+1}")
+                continue
+            
+            for item in response:
+                yt_video_title = item['title']
+                yt_channel_name = item['channel']['name']
+                video_id = item['id']
+                
+                # Skip if we've already seen this video
+                if video_id in [v[0] for v in all_videos_found]:
+                    continue
+                
+                # Multiple scoring approaches for title
+                title_scores = []
+                
+                # 1. Direct fuzzy match
+                title_scores.append(fuzzy_match(yt_video_title.lower(), track_name.lower()))
+                
+                # 2. Clean title match (without feat/ft parts and other keywords)
+                clean_yt_title = preprocess_title(yt_video_title, yt_channel_name)
+                clean_sp_title = preprocess_title(track_name, artists)
+                title_scores.append(fuzzy_match(clean_yt_title, clean_sp_title))
+                
+                # 3. Handle featured artists in track names
+                if '(' in track_name and ('feat' in track_name.lower() or 'ft' in track_name.lower()):
+                    # Extract main title before parentheses
+                    main_title = track_name.split('(')[0].strip()
+                    title_scores.append(fuzzy_match(yt_video_title.lower(), main_title.lower()))
+                
+                # 4. Handle YouTube-specific title patterns (remove common suffixes)
+                yt_title_clean = yt_video_title.lower()
+                for suffix in [' official video', ' official audio', ' music video', ' mv', ' lyrics']:
+                    if yt_title_clean.endswith(suffix):
+                        yt_title_clean = yt_title_clean[:-len(suffix)].strip()
+                title_scores.append(fuzzy_match(yt_title_clean, track_name.lower()))
+                
+                # 5. Check if track titles contain similar words
+                yt_words = set(yt_video_title.lower().replace('(', ' ').replace(')', ' ').split())
+                sp_words = set(track_name.lower().replace('(', ' ').replace(')', ' ').split())
+                common_words = yt_words & sp_words
+                if len(common_words) > 0:
+                    word_score = (len(common_words) / max(len(yt_words), len(sp_words))) * 100
+                    title_scores.append(word_score)
+                
+                title_score = max(title_scores)
+                
+                # Artist matching with multiple approaches
+                artist_scores = []
+                
+                # Direct channel name matching
+                artist_scores.append(fuzzy_match(yt_channel_name.lower(), artists.lower()))
+                
+                # Check if artist name appears in video title (very common on YouTube)
+                if artists.lower() in yt_video_title.lower():
+                    artist_scores.append(90)
+                
+                # Check individual artist words in title or channel
+                for artist_word in artists.lower().split():
+                    if len(artist_word) > 2:
+                        if artist_word in yt_video_title.lower():
+                            artist_scores.append(85)
+                        if artist_word in yt_channel_name.lower():
+                            artist_scores.append(75)
+                
+                # Handle artist variations
+                clean_channel = yt_channel_name.lower()
+                for suffix in [' official', ' vevo', ' records', ' music']:
+                    if clean_channel.endswith(suffix):
+                        clean_channel = clean_channel[:-len(suffix)].strip()
+                artist_scores.append(fuzzy_match(clean_channel, artists.lower()))
+                
+                # Handle multiple artists
+                if ',' in artists:
+                    for artist in artists.split(','):
+                        artist = artist.strip()
+                        if artist.lower() in yt_channel_name.lower() or artist.lower() in yt_video_title.lower():
+                            artist_scores.append(80)
+                
+                artist_score = max(artist_scores) if artist_scores else 0
+                
+                # Calculate total score
+                total_score = 0.7 * title_score + 0.3 * artist_score
+                
+                print(f"[DEBUG] '{yt_video_title}' by {yt_channel_name}")
+                print(f"        Title scores: {title_scores} -> {title_score:.1f}")
+                print(f"        Artist scores: {artist_scores} -> {artist_score:.1f}")
+                print(f"        Total score: {total_score:.1f}")
+                
+                # Store all videos for debugging
+                all_videos_found.append((video_id, title_score, artist_score, yt_video_title, yt_channel_name, total_score))
+                
+                # Update best match
+                best_total_score = 0.7 * best_match[1] + 0.3 * best_match[2]
+                if total_score > best_total_score:
+                    best_match = [video_id, title_score, artist_score, yt_video_title, yt_channel_name]
+        
+        # Sort all found videos by total score for debugging
+        all_videos_found.sort(key=lambda x: x[5], reverse=True)
+        print(f"\n[DEBUG] Top 3 YouTube matches found:")
+        for i, (vid_id, t_score, a_score, title, channel, total) in enumerate(all_videos_found[:3]):
+            print(f"  {i+1}. '{title}' by {channel} (T:{t_score:.1f}, A:{a_score:.1f}, Total:{total:.1f})")
+        
+        # More lenient thresholds with detailed output
+        title_threshold = 60  # Reduced from 70
+        artist_threshold = 40  # Reduced from 65
+        high_title_threshold = 80  # For cases where artist matching is poor
+        
+        if best_match[1] >= title_threshold and best_match[2] >= artist_threshold:
+            print(f"✓ ACCEPTED: '{best_match[3]}' by {best_match[4]} (Title: {best_match[1]:.1f}, Artist: {best_match[2]:.1f})")
+            print(f"final song title (yt): {best_match[3]}, song title (sp): {track_name}")
+            print(f"final artist names (yt): {best_match[4]}, artist names (sp): {artists}")
+            print("")
+            return best_match
+        elif best_match[1] >= high_title_threshold:
+            print(f"✓ HIGH TITLE MATCH: '{best_match[3]}' by {best_match[4]} (Title: {best_match[1]:.1f}, Artist: {best_match[2]:.1f})")
+            print(f"final song title (yt): {best_match[3]}, song title (sp): {track_name}")
+            print(f"final artist names (yt): {best_match[4]}, artist names (sp): {artists}")
+            print("")
+            return best_match
         else:
-            print("err: result didn't match given structure")
-            input("Press Enter to continue...")
+            print(f"✗ REJECTED: Best was '{best_match[3]}' by {best_match[4]} (Title: {best_match[1]:.1f}, Artist: {best_match[2]:.1f})")
+            print(f"   Needs: Title >= {title_threshold} AND Artist >= {artist_threshold}, OR Title >= {high_title_threshold}")
+            print("no suitable match found.")
             return None
 
         
@@ -207,9 +301,8 @@ class YoutubeProvider(Provider):
             str: returns ONLY the Youtube video id if a suitable match is found, else None.
         """
 
-        clean_track_name, artists = preprocessv2(track_name), preprocessv2(artists)
-
-        query = f"{clean_track_name} {artists}"
+        clean_sp_title = preprocess_title(track_name, artists)
+        query = f"{clean_sp_title} {artists}"
 
         search = VideosSearch(query, limit=6)
         response = search.result().get('result', [])
