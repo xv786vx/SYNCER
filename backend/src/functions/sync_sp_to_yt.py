@@ -8,6 +8,10 @@ def sync_sp_to_yt(playlist_to_modify):
 
 
     pl_info = sp.get_playlist_by_name(playlist_to_modify)
+    if pl_info is None:
+        print(f"Could not find or access playlist '{playlist_to_modify}'")
+        return
+    
     print(f"SPOTIFY playlist chosen: {pl_info['title']}")
 
     # 3. check if same playlist exists in youtube, if not then make it
@@ -26,22 +30,26 @@ def sync_sp_to_yt(playlist_to_modify):
         artists = track['artist']
 
         result = yt.search_auto(song, artists)
-        if result is not None:
-            print(result)
-            t_to_sync_yt.append(result[0])
-        else:
-            print(f"A suitable match for <{song}> by <{artists}> was not found.")
-            choice = int(input(f"Would you like to (1) manually search the song, or (2) skip? "))
-            if choice == 1:
-                song = input("Enter the song title: ")
-                artists = input("Enter the artist(s): ")
-                result = yt.search_manual(song, artists)
-                t_to_sync_yt.append(result)
-            
-            else:
-                continue
 
-    yt.add_to_playlist(yt.get_playlist_by_name(pl_info['title'])['id'], t_to_sync_yt)
+        if result is not None:
+            t_to_sync_yt.append({
+                "name": song,
+                "artist": artists,
+                "status": "found",
+                "yt_id": result[0],
+                "requires_manual_search": False
+            })
+        else:
+            t_to_sync_yt.append({
+                "name": song,
+                "artist": artists,
+                "status": "not_found",
+                "yt_id": None,
+                "requires_manual_search": True
+            })
+    
+    return t_to_sync_yt
+
 
 # test case: Free Kutter (feat. Jay Electronica)
 
