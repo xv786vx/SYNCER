@@ -110,35 +110,6 @@ class YoutubeProvider(Provider):
                  error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
             print(f"Error building YouTube API client: {error_details}")
             raise
-        
-        # Build the YouTube API client
-        # try:
-        #     self.youtube = build('youtube', 'v3', credentials=credentials)
-        #     # Test connection 1: Channels
-        #     print("Testing YouTube API connection (Channels)...")
-        #     test_request_channels = self.youtube.channels().list(part="snippet", mine=True, maxResults=1)
-        #     test_response_channels = test_request_channels.execute()
-        #     print("YouTube API connection successful (Channels)!")
-
-        #     # --- ADDED: Test connection 2: Playlists ---
-        #     print("Testing YouTube API connection (Playlists)...")
-        #     test_request_playlists = self.youtube.playlists().list(part="snippet", mine=True, maxResults=1)
-        #     test_response_playlists = test_request_playlists.execute()
-        #     print("YouTube API connection successful (Playlists)!")
-        #     # --- END OF ADDED TEST ---
-
-        # except Exception as e:
-        #     error_details = f"Error: {e}"
-        #     if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
-        #          error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
-        #     # Be more specific about which test failed
-        #     if 'test_request_playlists' in locals():
-        #          print(f"CRITICAL ERROR during Playlists API test after successful Channels test: {error_details}")
-        #     elif 'test_request_channels' in locals():
-        #          print(f"Error connecting to YouTube API during initial Channels test: {error_details}")
-        #     else:
-        #          print(f"Error building YouTube API client or during initial connection: {error_details}")
-        #     raise
 
 
     def search_auto(self, track_name, artists) -> list:
@@ -283,36 +254,12 @@ class YoutubeProvider(Provider):
         response = search.result().get('result', [])
 
         if response:
-            for item in response:
-                video_title = item['title']
-                artist_names = item['channel']['name']
-
-                choice = input(f"Is this the song you were looking for? {video_title} by {artist_names} (y/n): ")
-                if choice.lower() == 'y':
-                    return item['id']
-            print(f"Could not find the song '{track_name}' by '{artists}'.")
-            return None
+            item = response[0]
+            return item['id']
         else:
             print("err: no items returned")
             return None
-
-
-    # def get_playlists(self):
-    #     """Obtains a list of the user's Youtube playlists
-
-    #     Returns:
-    #         list[]: a list containing the name, id, description, and image of each playlist.
-    #     """
-    #     request = self.youtube.playlists().list(part="snippet", mine=True)
-    #     response = request.execute()
-    #     return [
-    #         {
-    #             'title': pl['snippet']['title'],
-    #             'id': pl['id'],
-    #             'description': pl['snippet'].get('description', ""),
-    #             'image': pl['snippet']['thumbnails']['default']['url']
-    #         }
-    #         for pl in response.get("items", [])]
+        
     
     def get_playlists(self):
         """Obtains a list of the user's Youtube playlists"""

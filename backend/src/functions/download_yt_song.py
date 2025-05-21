@@ -6,6 +6,10 @@ def download_yt_song(song_name, artists):
     video_id = yt.search_manual(song_name, artists)
     if video_id:
         yt.download_song(video_id)
-        print("Download complete!")
+        return f"Downloaded '{song_name}' by '{artists}' successfully!"
+
     else:
-        print(f"Could not find the song '{song_name}' by '{artists}'.")
+        return f"Could not find the song '{song_name}' by '{artists}'."
+    
+# Currently, this function downloads the song to the current working directory, NOT the user's music folder / downloads.
+# For this reason, the function is not used in the app (right now).

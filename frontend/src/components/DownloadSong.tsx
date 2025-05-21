@@ -3,19 +3,21 @@ import { SiYoutube } from 'react-icons/si';
 import { APIErrorHandler } from '../utils/errorHandling';
 
 interface DownloadSongProps {
-  onDownload: (songTitle: string) => Promise<void>;
+  onDownload: (songTitle: string, artistNames: string) => Promise<void>;
 }
 
 export function DownloadSong({ onDownload }: DownloadSongProps) {
   const [songTitle, setSongTitle] = useState('');
+  const [artistName, setArtistName] = useState('');
 
   const handleDownload = async () => {
     if (!songTitle.trim()) {
       APIErrorHandler.handleError(new Error('Please enter a song title'));
       return;
     }
-    await onDownload(songTitle);
+    await onDownload(songTitle, artistName);
     setSongTitle('');
+    setArtistName('');
   };
 
   return (
@@ -27,6 +29,13 @@ export function DownloadSong({ onDownload }: DownloadSongProps) {
           value={songTitle}
           onChange={(e) => setSongTitle(e.target.value)}
           placeholder="Song title..."
+          className="bg-transparent border-0 border-b-2 border-red-700 focus:border-red-600 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
+        />
+        <input
+          type="text"
+          value={artistName}
+          onChange={(e) => setArtistName(e.target.value)}
+          placeholder="Artist name(s)..."
           className="bg-transparent border-0 border-b-2 border-red-700 focus:border-red-600 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
         />
         <button

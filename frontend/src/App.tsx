@@ -111,10 +111,10 @@ function App() {
     }
   };
 
-  const handleDownloadSong = async (songTitle: string) => {
+  const handleDownloadSong = async (songTitle: string, artists: string) => {
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/download_yt_song?song_name=${encodeURIComponent(songTitle)}`);
+      const response = await fetch(`http://127.0.0.1:8000/api/download_yt_song?song_name=${encodeURIComponent(songTitle)}&artists=${encodeURIComponent(artists)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.result) {
         setToast(data.result);
