@@ -2,46 +2,28 @@
 // import viteLogo from '/vite.svg'
 // import './App.css'
 import { useState, useEffect } from 'react'
-import { getThing } from './get'
 import { FaSpotify } from 'react-icons/fa'
 import { SiYoutube } from 'react-icons/si'
-
-type SongStatus = {
-  name: string;
-  artist: string;
-  status: 'found' | 'not_found' | 'skipped';
-  yt_id?: string; // For Spotify → YouTube
-  sp_id?: string; // For YouTube → Spotify
-  requires_manual_search?: boolean;
-};
-
-interface Process {
-  id: string;
-  type: string;
-  status: 'pending' | 'in-progress' | 'completed' | 'error';
-  message: string;
-  interactive?: {
-    type: 'search' | 'skip';
-    songName: string;
-    onSearch: () => void;
-    onSkip: () => void;
-  };
-}
+import { ToastContainer } from 'react-toastify'
+import 'react-toastify/dist/ReactToastify.css'
+import { APIErrorHandler } from './utils/errorHandling'
+import { SyncSpToYt } from './components/SyncSpToYt'
+import { SyncYtToSp } from './components/SyncYtToSp'
+import { MergePlaylists } from './components/MergePlaylists'
+import { DownloadSong } from './components/DownloadSong'
+import { SongSyncStatus } from './components/SongSyncStatus'
+import { ProcessesOverlay } from './components/ProcessesOverlay'
+import { Process, SongStatus, APIResponse, StatusResponse } from './types'
 
 function App() {
-  const [data, setData] = useState({ name: '', authenticated: false })
+  const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
   const [activeTab, setActiveTab] = useState("1");
-  const [spPlaylist, setSpPlaylist] = useState('')
-  const [mergeYtPlaylist, setMergeYtPlaylist] = useState('')
-  const [mergeSpPlaylist, setMergeSpPlaylist] = useState('')
-  const [ytPlaylist, setYtPlaylist] = useState('')
-  const [songTitle, setSongTitle] = useState('')
   const [processes, setProcesses] = useState<Process[]>([])
-  const [songs, setSongs] = useState<SongStatus[]>([]);
-  const [syncedSpPlaylist, setSyncedSpPlaylist] = useState('');
-  const [ytToSpSongs, setYtToSpSongs] = useState<SongStatus[]>([]);
-  const [syncedYtPlaylist, setSyncedYtPlaylist] = useState('');
-  const [toast, setToast] = useState<string | null>(null);
+  const [songs, setSongs] = useState<SongStatus[]>([])
+  const [ytToSpSongs, setYtToSpSongs] = useState<SongStatus[]>([])
+  const [syncedSpPlaylist, setSyncedSpPlaylist] = useState('')
+  const [syncedYtPlaylist, setSyncedYtPlaylist] = useState('')
+  const [toast, setToast] = useState<string | null>(null)
 
   const addProcess = (type: string, message: string) => {
     const id = Date.now().toString();
@@ -62,80 +44,88 @@ function App() {
   };
 
   const fetchStatus = async () => {
-    const response = await getThing('http://127.0.0.1:8000/')
-    setData(response)
-  }
-
-  const tabs = [
-    { id: "1", label: "Sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
-    { id: "2", label: "Sync", icon1: <SiYoutube className="inline-block mx-1" />, icon2: <FaSpotify className="inline-block mx-1" /> },
-    { id: "3", label: "Merge Playlists" },
-    { id: "4", label: "Download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
-  ];
-
-  // const authenticate = async () => {
-  //   const response = await getThing('http://127.0.0.1:8000/api/authenticate')
-  //   setData(prev => ({ ...prev, authenticated: response.authenticated }))
-  // }
-
-  const syncSpToYt = async () => {
-    const processId = addProcess('sync', `Syncing Spotify playlist "${spPlaylist}" to YouTube...`);
     try {
-      const response = await fetch(`http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(spPlaylist)}`);
-      const data = await response.json();
-      setSongs(data.songs);
-      setSyncedSpPlaylist(spPlaylist);
-      updateProcess(processId, 'completed', 'Sync analysis complete!');
-      setSpPlaylist('');
-      setToast(data.message || 'Sync complete!');
-    } catch {
-      updateProcess(processId, 'error', 'Failed to sync playlist');
-    }
-  };
-
-  const syncYtToSp = async () => {
-    const processId = addProcess('sync', `Syncing YouTube playlist "${ytPlaylist}" to Spotify...`);
-    try {
-      const response = await fetch(`http://127.0.0.1:8000/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(ytPlaylist)}`);
-      const data = await response.json();
-      setYtToSpSongs(data.songs);
-      setSyncedYtPlaylist(ytPlaylist);
-      updateProcess(processId, 'completed', 'Sync analysis complete!');
-      setYtPlaylist('');
-      setToast(data.message || 'Sync complete!');
-    } catch {
-      updateProcess(processId, 'error', 'Failed to sync playlist');
-    }
-  };
-
-  const mergePlaylists = async () => {
-    const processId = addProcess('merge', `Merging playlists "${mergeYtPlaylist}" and "${mergeSpPlaylist}"...`);
-    try {
-      const response = await getThing(`http://127.0.0.1:8000/api/merge_playlists?playlist1=${encodeURIComponent(mergeYtPlaylist)}&playlist2=${encodeURIComponent(mergeSpPlaylist)}`)
-      setToast(response.result)
-      updateProcess(processId, 'completed', 'Playlists merged successfully!')
-      removeProcess(processId)
-      setMergeYtPlaylist('')
-      setMergeSpPlaylist('')
-    } catch {
-      updateProcess(processId, 'error', 'Failed to merge playlists')
-      setToast('Error: Failed to merge playlists')
+      const response = await fetch('http://127.0.0.1:8000/');
+      const data = await APIErrorHandler.handleResponse<StatusResponse>(response);
+      setData(data);
+    } catch (error) {
+      APIErrorHandler.handleError(error as Error, 'Failed to fetch application status');
     }
   }
 
-  const downloadYtSong = async () => {
+  const handleSyncSpToYt = async (playlistName: string) => {
+    const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`);
+      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      if (data.songs) {
+        setSongs(data.songs);
+        setSyncedSpPlaylist(playlistName);
+        updateProcess(processId, 'completed', 'Sync analysis complete!');
+        setToast(data.message || 'Sync complete!');
+      }
+    } catch (error) {
+      updateProcess(processId, 'error', 'Failed to sync playlist');
+      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
+    }
+  };
+
+  const handleSyncYtToSp = async (playlistName: string) => {
+    const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`);
+      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      if (data.songs) {
+        setYtToSpSongs(data.songs);
+        setSyncedYtPlaylist(playlistName);
+        updateProcess(processId, 'completed', 'Sync analysis complete!');
+        setToast(data.message || 'Sync complete!');
+      }
+    } catch (error) {
+      updateProcess(processId, 'error', 'Failed to sync playlist');
+      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
+    }
+  };
+
+  const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string) => {
+    const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
+    try {
+      const response = await fetch(`http://127.0.0.1:8000/api/merge_playlists?yt_playlist=${encodeURIComponent(ytPlaylist)}&sp_playlist=${encodeURIComponent(spPlaylist)}&merge_name=${encodeURIComponent(mergeName)}`);
+      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      if (data.result) {
+        setToast(data.result);
+        updateProcess(processId, 'completed', 'Playlists merged successfully!');
+        removeProcess(processId);
+      }
+    } catch (error: any) {
+      updateProcess(processId, 'error', 'Failed to merge playlists');
+      // Try to extract a user-friendly error message
+      let message = "Failed to merge playlists";
+      if (error?.error?.message) {
+        message = error.error.message;
+      } else if (error.message) {
+        message = error.message;
+      }
+      setToast(message);
+      APIErrorHandler.handleError(error as Error, message);
+    }
+  };
+
+  const handleDownloadSong = async (songTitle: string) => {
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
     try {
-      const response = await getThing(`http://127.0.0.1:8000/api/download_yt_song?title=${encodeURIComponent(songTitle)}`)
-      setToast(response.result)
-      updateProcess(processId, 'completed', 'Download completed successfully!')
-      removeProcess(processId)
-      setSongTitle('')
-    } catch {
-      updateProcess(processId, 'error', 'Failed to download song')
-      setToast('Error: Failed to download song')
+      const response = await fetch(`http://127.0.0.1:8000/api/download_yt_song?song_name=${encodeURIComponent(songTitle)}`);
+      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      if (data.result) {
+        setToast(data.result);
+        updateProcess(processId, 'completed', 'Download completed successfully!');
+        removeProcess(processId);
+      }
+    } catch (error) {
+      updateProcess(processId, 'error', 'Failed to download song');
+      APIErrorHandler.handleError(error as Error, 'Failed to download song');
     }
-  }
+  };
 
   const handleManualSearch = async (song: SongStatus, idx: number) => {
     const response = await fetch(
@@ -229,122 +219,37 @@ function App() {
     }
   }, [toast]);
 
+  const tabs = [
+    { id: "1", label: "Sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
+    { id: "2", label: "Sync", icon1: <SiYoutube className="inline-block mx-1" />, icon2: <FaSpotify className="inline-block mx-1" /> },
+    { id: "3", label: "Merge Playlists" },
+    { id: "4", label: "Download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
+  ];
+
   return (
     <div className="flex w-full h-full min-h-0 min-w-0 bg-neutral-800 text-white relative">
+      <ToastContainer />
       {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any */}
       {songs.length > 0 ? (
-        <div className="absolute inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center">
-          <div className="w-full max-w-[400px] p-6 bg-neutral-900 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4 text-center">Song Sync Status</h3>
-            <ul>
-              {songs.map((song, idx) => (
-                <li key={idx} className="flex items-center gap-2 mb-1">
-                  <span>{song.name} by {song.artist}</span>
-                  {song.status === 'found' && <span className="text-green-400">✔️</span>}
-                  {song.status === 'not_found' && <span className="text-red-400">❌</span>}
-                  {song.status === 'skipped' && <span className="text-gray-400">⏭️</span>}
-                  {song.requires_manual_search && (
-                    <>
-                      <button
-                        className="ml-2 px-2 py-1 bg-blue-600 text-xs rounded"
-                        onClick={() => handleManualSearch(song, idx)}
-                      >
-                        Manual Search
-                      </button>
-                      <button
-                        className="ml-1 px-2 py-1 bg-gray-600 text-xs rounded"
-                        onClick={() => handleSkip(song, idx)}
-                      >
-                        Skip
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <button
-              className="mt-4 px-4 py-2 bg-green-700 rounded"
-              disabled={songs.some(s => s.status === 'not_found' && !s.requires_manual_search)}
-              onClick={handleFinalize}
-            >
-              Finalize Sync
-            </button>
-          </div>
-        </div>
+        <SongSyncStatus
+          songs={songs}
+          onManualSearch={handleManualSearch}
+          onSkip={handleSkip}
+          onFinalize={handleFinalize}
+        />
       ) : ytToSpSongs.length > 0 ? (
-        <div className="absolute inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center">
-          <div className="w-full max-w-[400px] p-6 bg-neutral-900 rounded-lg shadow-lg">
-            <h3 className="text-lg font-semibold mb-4 text-center">Song Sync Status</h3>
-            <ul>
-              {ytToSpSongs.map((song, idx) => (
-                <li key={idx} className="flex items-center gap-2 mb-1">
-                  <span>{song.name} by {song.artist}</span>
-                  {song.status === 'found' && <span className="text-green-400">✔️</span>}
-                  {song.status === 'not_found' && <span className="text-red-400">❌</span>}
-                  {song.status === 'skipped' && <span className="text-gray-400">⏭️</span>}
-                  {song.requires_manual_search && (
-                    <>
-                      <button
-                        className="ml-2 px-2 py-1 bg-blue-600 text-xs rounded"
-                        onClick={() => handleManualSearchYtToSp(song, idx)}
-                      >
-                        Manual Search
-                      </button>
-                      <button
-                        className="ml-1 px-2 py-1 bg-gray-600 text-xs rounded"
-                        onClick={() => handleSkipYtToSp(song, idx)}
-                      >
-                        Skip
-                      </button>
-                    </>
-                  )}
-                </li>
-              ))}
-            </ul>
-            <button
-              className="mt-4 px-4 py-2 bg-green-700 rounded"
-              disabled={ytToSpSongs.some(s => s.status === 'not_found' && !s.requires_manual_search)}
-              onClick={handleFinalizeYtToSp}
-            >
-              Finalize Sync
-            </button>
-          </div>
-        </div>
+        <SongSyncStatus
+          songs={ytToSpSongs}
+          onManualSearch={handleManualSearchYtToSp}
+          onSkip={handleSkipYtToSp}
+          onFinalize={handleFinalizeYtToSp}
+        />
       ) : (
         processes.length > 0 && (
-          <div
-            className="absolute inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center"
-            onClick={dismissProcesses}
-            style={{ cursor: 'pointer' }}
-          >
-            <div
-              className="w-full max-w-[360px] p-4"
-              onClick={e => e.stopPropagation()}
-              style={{ cursor: 'default' }}
-            >
-              <h3 className="text-lg font-semibold mb-4 text-center">Processes</h3>
-              <div className="space-y-3">
-                {processes.map(process => (
-                  <div
-                    key={process.id}
-                    className={`text-sm p-3 rounded-lg ${
-                      process.status === 'completed' ? 'bg-green-900' :
-                      process.status === 'error' ? 'bg-red-900' :
-                      process.status === 'in-progress' ? 'bg-blue-900' :
-                      'bg-neutral-700'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-medium">{process.message}</span>
-                      {process.status === 'in-progress' && !process.interactive && (
-                        <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <ProcessesOverlay
+            processes={processes}
+            onDismiss={dismissProcesses}
+          />
         )
       )}
 
@@ -380,90 +285,10 @@ function App() {
       
       {/* Main Content */}
       <div className="w-[216px] p-6">
-        {activeTab === "1" && (
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-6 w-40 mx-auto">
-              <p className="text-md text-center">Enter the name of your Spotify playlist below!</p>
-              <input
-                type="text"
-                value={spPlaylist}
-                onChange={(e) => setSpPlaylist(e.target.value)}
-                placeholder="..."
-                className="bg-transparent border-0 border-b-2 border-green-600 focus:border-green-500 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
-              />
-              <button
-                onClick={syncSpToYt}
-                className="w-full py-2 bg-red-700 text-white rounded-md hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500"
-              >
-                Sync to <SiYoutube className="inline-block align-text-bottom ml-0.5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {activeTab === "2" && <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-6 w-40 mx-auto">
-              <p className="text-md text-center">Enter the name of your YouTube playlist below!</p>
-              <input
-                type="text"
-                value={ytPlaylist}
-                onChange={(e) => setYtPlaylist(e.target.value)}
-                placeholder="..."
-                className="bg-transparent border-0 border-b-2 border-red-700 focus:border-red-600 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
-              />
-              <button
-                onClick={syncYtToSp}
-                className="w-full py-2 bg-green-600 text-white rounded-md hover:bg-green-500 focus:outline-none focus:ring-2 focus:ring-green-400"
-              >
-                Sync to <FaSpotify className="inline-block align-middle ml-1" />
-              </button>
-            </div>
-          </div>}
-
-        {activeTab === "3" && <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-2 w-40 mx-auto">
-              <p className="text-md text-center">Enter the names of the Spotify and YouTube playlists you want to merge!</p>
-              <input
-                type="text"
-                value={mergeYtPlaylist}
-                onChange={(e) => setMergeYtPlaylist(e.target.value)}
-                placeholder="YouTube Playlist name..."
-                className="text-sm bg-transparent border-0 border-b-2 border-red-700 focus:border-red-600 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
-              />
-              <input
-                type="text"
-                value={mergeSpPlaylist}
-                onChange={(e) => setMergeSpPlaylist(e.target.value)}
-                placeholder="Spotify Playlist name..."
-                className="text-sm bg-transparent border-0 border-b-2 border-green-600 focus:border-green-500 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
-              />
-              <button
-                onClick={mergePlaylists}
-                className="w-full py-2 mt-6 bg-neutral-600 text-white rounded-md hover:bg-neutral-500 focus:outline-none focus:ring-2 focus:ring-white"
-              >
-                Merge Playlists
-              </button>
-            </div>
-          </div>}
-
-        {activeTab === "4" && <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-6 w-40 mx-auto">
-              <p className="text-md text-center">Enter the name of the YouTube song you want to download!</p>
-              <input
-                type="text"
-                value={songTitle}
-                onChange={(e) => setSongTitle(e.target.value)}
-                placeholder="Song title..."
-                className="bg-transparent border-0 border-b-2 border-red-700 focus:border-red-600 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
-              />
-              <button
-                onClick={downloadYtSong}
-                className="w-full py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500"
-              >
-                Download <SiYoutube className="inline-block align-middle ml-1" />
-              </button>
-            </div>
-          </div>}
+        {activeTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
+        {activeTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
+        {activeTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
+        {activeTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}
       </div>
 
       {toast && (
