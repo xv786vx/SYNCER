@@ -256,7 +256,7 @@ function App() {
       {/* Sidebar */}
       <div className="flex flex-col flex-shrink-0 w-[144px] bg-neutral-700 gap-y-2 p-3">
         <h1 className="text-white text-center text-2xl font-bold">SYNCER</h1>
-        <p className="text-white text-center text-xs">I'm like hey whats up hello</p>
+        <p className="text-white text-center text-xs">Testing Branch</p>
         {tabs.map(tab => (
           <button
             key={tab.id}
