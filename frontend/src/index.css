@@ -13,3 +13,8 @@ body,
   padding: 0;
   overflow: hidden;
 }
+
+.font-cascadia {
+  font-family: "Cascadia Code", monospace;
+  word-spacing: -2px;
+}

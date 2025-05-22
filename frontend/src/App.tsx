@@ -15,6 +15,27 @@ import { SongSyncStatus } from './components/SongSyncStatus'
 import { ProcessesOverlay } from './components/ProcessesOverlay'
 import { Process, SongStatus, APIResponse, StatusResponse } from './types'
 
+function getMsUntilMidnightEST() {
+  // Get current time in UTC
+  const now = new Date();
+  // EST is UTC-5, but account for daylight saving if needed
+  // For simplicity, let's use UTC-5 always
+  const nowEST = new Date(now.getTime() - (now.getTimezoneOffset() + 300) * 60000);
+  const nextMidnight = new Date(nowEST);
+  nextMidnight.setHours(24, 0, 0, 0);
+  return nextMidnight.getTime() - nowEST.getTime();
+}
+
+function formatMs(ms: number) {
+  const totalSeconds = Math.floor(ms / 1000);
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `${hours.toString().padStart(2, '0')}:${minutes
+    .toString()
+    .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+}
+
 function App() {
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
   const [activeTab, setActiveTab] = useState("1");
@@ -24,6 +45,20 @@ function App() {
   const [syncedSpPlaylist, setSyncedSpPlaylist] = useState('')
   const [syncedYtPlaylist, setSyncedYtPlaylist] = useState('')
   const [toast, setToast] = useState<string | null>(null)
+  const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
+  const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
+
+
+  const fetchQuota = async () => {
+      try {
+        const res = await fetch('http://127.0.0.1:8000/api/youtube_quota_usage');
+        const data = await res.json();
+        setQuota({ total: data.total, limit: data.limit });
+      } catch {
+        setQuota(null);
+      }
+    };
+  
 
   const addProcess = (type: string, message: string) => {
     const id = Date.now().toString();
@@ -63,6 +98,7 @@ function App() {
         setSyncedSpPlaylist(playlistName);
         updateProcess(processId, 'completed', 'Sync analysis complete!');
         setToast(data.message || 'Sync complete!');
+        fetchQuota();
       }
     } catch (error) {
       updateProcess(processId, 'error', 'Failed to sync playlist');
@@ -80,6 +116,7 @@ function App() {
         setSyncedYtPlaylist(playlistName);
         updateProcess(processId, 'completed', 'Sync analysis complete!');
         setToast(data.message || 'Sync complete!');
+        fetchQuota();
       }
     } catch (error) {
       updateProcess(processId, 'error', 'Failed to sync playlist');
@@ -96,14 +133,17 @@ function App() {
         setToast(data.result);
         updateProcess(processId, 'completed', 'Playlists merged successfully!');
         removeProcess(processId);
+        fetchQuota();
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       updateProcess(processId, 'error', 'Failed to merge playlists');
       // Try to extract a user-friendly error message
       let message = "Failed to merge playlists";
-      if (error?.error?.message) {
-        message = error.error.message;
-      } else if (error.message) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      if (error && typeof error === "object" && "error" in error && typeof (error as any).error === "object" && "message" in (error as any).error) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        message = (error as any).error.message;
+      } else if (error instanceof Error) {
         message = error.message;
       }
       setToast(message);
@@ -120,6 +160,7 @@ function App() {
         setToast(data.result);
         updateProcess(processId, 'completed', 'Download completed successfully!');
         removeProcess(processId);
+        fetchQuota();
       }
     } catch (error) {
       updateProcess(processId, 'error', 'Failed to download song');
@@ -143,7 +184,7 @@ function App() {
     );
   };
 
-  const handleSkip = (song: SongStatus, idx: number) => {
+  const handleSkip = (_song: SongStatus, idx: number) => {
     setSongs(prev =>
       prev.map((s, i) =>
         i === idx
@@ -182,7 +223,7 @@ function App() {
     );
   };
 
-  const handleSkipYtToSp = (song: SongStatus, idx: number) => {
+  const handleSkipYtToSp = (_song: SongStatus, idx: number) => {
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
         i === idx
@@ -213,6 +254,21 @@ function App() {
   }, [])
 
   useEffect(() => {
+    fetchQuota();
+    const interval = setInterval(fetchQuota, 6000); // fetch every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (quota && quota.total >= quota.limit) {
+      const interval = setInterval(() => {
+        setCountdown(getMsUntilMidnightEST());
+      }, 1000);
+      return () => clearInterval(interval);
+    }
+  }, [quota]);
+
+  useEffect(() => {
     if (toast) {
       const timer = setTimeout(() => setToast(null), 3500);
       return () => clearTimeout(timer);
@@ -220,10 +276,10 @@ function App() {
   }, [toast]);
 
   const tabs = [
-    { id: "1", label: "Sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
-    { id: "2", label: "Sync", icon1: <SiYoutube className="inline-block mx-1" />, icon2: <FaSpotify className="inline-block mx-1" /> },
-    { id: "3", label: "Merge Playlists" },
-    { id: "4", label: "Download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
+    { id: "1", label: "sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
+    { id: "2", label: "sync", icon1: <SiYoutube className="inline-block mx-1" />, icon2: <FaSpotify className="inline-block mx-1" /> },
+    { id: "3", label: "merge playlists" },
+    { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
   ];
 
   return (
@@ -255,17 +311,21 @@ function App() {
 
       {/* Sidebar */}
       <div className="flex flex-col flex-shrink-0 w-[144px] bg-neutral-700 gap-y-2 p-3">
-        <h1 className="text-white text-center text-2xl font-bold">SYNCER</h1>
-        <p className="text-white text-center text-xs">Testing Branch</p>
+        <h1 className="text-white text-center text-2xl font-bold font-cascadia">syncer</h1>
+        <p className="text-white text-center text-xs font-cascadia my-2">
+          <SiYoutube className="inline-block mr-2 my-1" />
+          API usage: {quota ? `${quota.total} / ${quota.limit}` : '...'} units
+        </p>
         {tabs.map(tab => (
           <button
             key={tab.id}
-            className={`px-2 py-3 rounded text-xs flex items-center justify-center ${
+            className={`px-2 py-3 rounded text-xs flex items-center justify-center font-cascadia ${
               activeTab === tab.id
                 ? "bg-neutral-800 text-white"
                 : "bg-neutral-900 text-white hover:bg-neutral-800"
             }`}
             onClick={() => setActiveTab(tab.id)}
+            disabled={!!(quota && quota.total >= quota.limit)}
           >
             {tab.id === "1" || tab.id === "2" ? (
               <>
@@ -285,10 +345,22 @@ function App() {
       
       {/* Main Content */}
       <div className="w-[216px] p-6">
-        {activeTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
-        {activeTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
-        {activeTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
-        {activeTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}
+        {quota && quota.total >= quota.limit ? (
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <div className="text-3xl font-bold mb-2">yabba dabba doo!</div>
+            <div className="text-lg mb-4">YouTube API quota exhausted</div>
+            <div className="text-sm mb-2">Quota resets in:</div>
+            <div className="text-2xl font-mono mb-4">{formatMs(countdown)}</div>
+            <div className="text-xs text-neutral-400">Try again after midnight EST</div>
+          </div>
+        ) : (
+          <>
+            {activeTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
+            {activeTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
+            {activeTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
+            {activeTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}
+          </>
+        )}
       </div>
 
       {toast && (

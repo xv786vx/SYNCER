@@ -1,4 +1,4 @@
 {
   "python.defaultInterpreterPath": "~/AppData/Local/Programs/Python/Python310/python.exe",
-  "discord.enabled": false
+  "discord.enabled": true
 }

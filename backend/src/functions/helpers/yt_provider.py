@@ -7,7 +7,9 @@ import yt_dlp
 from youtubesearchpython import VideosSearch
 
 from .provider import Provider
-from .provider import tokenize, preprocess_title, fuzzy_match, is_match
+from .provider import preprocess_title, fuzzy_match
+
+from .quota_tracker import increment_quota
 
 import os
 from dotenv import load_dotenv
@@ -266,6 +268,9 @@ class YoutubeProvider(Provider):
         try: # Add try...except here for detailed error on this specific call
             print("Attempting to execute self.youtube.playlists().list...")
             request = self.youtube.playlists().list(part="snippet", mine=True, maxResults=50) # Added maxResults
+
+            increment_quota('playlists.list')
+
             response = request.execute()
             print(f"Successfully executed playlists().list. Found {len(response.get('items', []))} items.")
             return [
@@ -323,6 +328,8 @@ class YoutubeProvider(Provider):
     
         while request:
             response = request.execute()
+
+            increment_quota("playlistItems.list")
             
             # Add the current batch of items to the playlist_items list
             playlist_items.extend([
@@ -364,6 +371,8 @@ class YoutubeProvider(Provider):
                 }
             )
             request.execute()
+
+            increment_quota("playlistItems.insert")
     
 
     def create_playlist(self, playlist_name):
@@ -388,6 +397,9 @@ class YoutubeProvider(Provider):
             }
         )
         response = request.execute()
+
+        increment_quota("playlists.insert")
+
         print(f"Created YouTube playlist: {response['snippet']['title']} with ID: {response['id']}")
         return response
     
