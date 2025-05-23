@@ -279,11 +279,11 @@ function App() {
     { id: "1", label: "sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
     { id: "2", label: "sync", icon1: <SiYoutube className="inline-block mx-1" />, icon2: <FaSpotify className="inline-block mx-1" /> },
     { id: "3", label: "merge playlists" },
-    { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
+    // { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" }, // uncomment when you want to add download functionality
   ];
 
   return (
-    <div className="flex w-full h-full min-h-0 min-w-0 bg-neutral-800 text-white relative">
+    <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-accent-1 text-white font-cascadia relative">
       <ToastContainer />
       {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any */}
       {songs.length > 0 ? (
@@ -310,7 +310,7 @@ function App() {
       )}
 
       {/* Sidebar */}
-      <div className="flex flex-col flex-shrink-0 w-[144px] bg-neutral-700 gap-y-2 p-3">
+      <div className="flex flex-col flex-shrink-0 w-[144px] bg-brand-dark gap-y-2 p-3">
         <h1 className="text-white text-center text-2xl font-bold font-cascadia">syncer</h1>
         <p className="text-white text-center text-xs font-cascadia my-2">
           <SiYoutube className="inline-block mr-2 my-1" />
@@ -321,8 +321,8 @@ function App() {
             key={tab.id}
             className={`px-2 py-3 rounded text-xs flex items-center justify-center font-cascadia ${
               activeTab === tab.id
-                ? "bg-neutral-800 text-white"
-                : "bg-neutral-900 text-white hover:bg-neutral-800"
+                ? "bg-brand-accent-3 text-white"
+                : "bg-brand-accent-1 text-white hover:bg-brand-accent-2"
             }`}
             onClick={() => setActiveTab(tab.id)}
             disabled={!!(quota && quota.total >= quota.limit)}
@@ -331,10 +331,11 @@ function App() {
               <>
                 {tab.label} {tab.icon1} to {tab.icon2}
               </>
-            ) : tab.id === "4" ? (
-              <>
-                {tab.label} {tab.icon1} {tab.label2}
-              </>
+            // ) : tab.id === "4" ? (
+            //   <>
+            //     {tab.label} {tab.icon1} {tab.label2}
+            //   </>
+            // ) : (
             ) : (
               tab.label
             )}

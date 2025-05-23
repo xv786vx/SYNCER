@@ -13,7 +13,7 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
       style={{ cursor: 'pointer' }}
     >
       <div
-        className="w-full max-w-[360px] p-4"
+        className="w-full max-w-[360px] p-4 font-cascadia"
         onClick={e => e.stopPropagation()}
         style={{ cursor: 'default' }}
       >

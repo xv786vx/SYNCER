@@ -10,7 +10,7 @@ interface SongSyncStatusProps {
 export function SongSyncStatus({ songs, onManualSearch, onSkip, onFinalize }: SongSyncStatusProps) {
   return (
     <div className="absolute inset-0 bg-black bg-opacity-80 z-50 flex items-center justify-center">
-      <div className="w-full max-w-[400px] p-6 bg-neutral-900 rounded-lg shadow-lg">
+      <div className="w-full max-w-[400px] p-6 bg-neutral-900 rounded-lg shadow-lg font-cascadia">
         <h3 className="text-lg font-semibold mb-4 text-center">Song Sync Status</h3>
 
         <div className="flex-1 overflow-y-auto max-h-[200px] mb-2 pr-1">
