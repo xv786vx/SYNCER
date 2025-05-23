@@ -22,17 +22,17 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
           {processes.map(process => (
             <div
               key={process.id}
-              className={`text-sm p-3 rounded-lg ${
+              className={`text-sm p-3 rounded-lg text-center ${
                 process.status === 'completed' ? 'bg-green-900' :
                 process.status === 'error' ? 'bg-red-900' :
                 process.status === 'in-progress' ? 'bg-blue-900' :
                 'bg-neutral-700'
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-medium">{process.message}</span>
+              <div className="flex flex-col items-center justify-center mb-2">
+                <span className="font-medium text-center">{process.message}</span>
                 {process.status === 'in-progress' && !process.interactive && (
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full"></div>
+                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mt-2"></div>
                 )}
               </div>
             </div>

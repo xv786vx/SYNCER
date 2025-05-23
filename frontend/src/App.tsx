@@ -94,6 +94,16 @@ function App() {
       const response = await fetch(`http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.songs) {
+          for (let i = 0; i < data.songs.length; i++) {
+          const song = data.songs[i];
+          updateProcess(
+            processId,
+            'in-progress',
+            `Syncing "${song.name} by ${song.artist}" (${i + 1}/${data.songs.length})`
+          );
+          // Simulate per-song sync delay (remove this if backend is already per-song)
+          await new Promise(res => setTimeout(res, 300)); // 300ms per song for demo
+        }
         setSongs(data.songs);
         setSyncedSpPlaylist(playlistName);
         updateProcess(processId, 'completed', 'Sync analysis complete!');
