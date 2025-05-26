@@ -23,32 +23,32 @@ export function MergePlaylists({ onMerge }: MergePlaylistsProps) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-col gap-2 w-40 mx-auto">
-        <p className="text-md text-center">Enter the names of the Spotify and YouTube playlists you want to merge!</p>
+      <div className="flex flex-col gap-2 w-40 mx-auto font-cascadia">
+        <p className="text-md text-center text-sm">Enter the names of the Spotify and YouTube playlists you want to merge!</p>
         <input
           type="text"
           value={mergeYtPlaylist}
           onChange={(e) => setMergeYtPlaylist(e.target.value)}
           placeholder="YouTube Playlist name..."
-          className="text-sm bg-transparent border-0 border-b-2 border-red-700 focus:border-red-600 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
+          className="text-xs bg-transparent border-0 border-b-2 border-brand-red-dark focus:border-brand-red focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
         />
         <input
           type="text"
           value={mergeSpPlaylist}
           onChange={(e) => setMergeSpPlaylist(e.target.value)}
           placeholder="Spotify Playlist name..."
-          className="text-sm bg-transparent border-0 border-b-2 border-green-600 focus:border-green-500 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
+          className="text-xs bg-transparent border-0 border-b-2 border-brand-green-dark focus:border-brand-green focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
         />
         <input
           type="text"
           value={mergeName}
           onChange={(e) => setMergeName(e.target.value)}
           placeholder="Merged Playlist name..."
-          className="text-sm bg-transparent border-0 border-b-2 border-neutral-600 focus:border-neutral-500 focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
+          className="text-xs bg-transparent border-0 border-b-2 border-brand-yellow-dark focus:border-brand-yellow focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
         />
         <button
           onClick={handleMerge}
-          className="w-full py-2 mt-6 bg-neutral-600 text-white rounded-md hover:bg-neutral-500 focus:outline-none focus:ring-2 focus:ring-white"
+          className="text-md w-full py-2 mt-6 bg-brand-yellow-dark text-white rounded-md hover:bg-brand-yellow focus:outline-none focus:ring-2 focus:ring-white"
         >
           Merge Playlists
         </button>

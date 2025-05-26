@@ -17,6 +17,7 @@ from src.functions.merge_playlists import merge_playlists
 from src.functions.download_yt_song import download_yt_song
 from src.functions.helpers.yt_provider import YoutubeProvider
 from src.functions.helpers.sp_provider import SpotifyProvider
+from src.functions.helpers.quota_tracker import get_total_quota_used, quota_usage, YT_API_QUOTA_COSTS
 
 # Create logs directory if it doesn't exist
 logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -134,6 +135,18 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# api usage endpoint
+@app.get("/api/youtube_quota_usage")
+def youtube_quota_usage():
+    return {
+        "usage": {k: quota_usage[k] * YT_API_QUOTA_COSTS[k] for k in quota_usage},
+        "total": get_total_quota_used(),
+        "limit": 10000
+    }
+
+
+# app endpoints
 @app.get("/")
 def root():
     try:
@@ -141,6 +154,10 @@ def root():
     except Exception as e:
         logger.error(f"Error in root endpoint: {str(e)}")
         raise APIError("Failed to get application status")
+
+# @app.get("/")
+# def root():
+#     return {"status": "ok"}
 
 @app.get("/api/authenticate")
 def authenticate(): 

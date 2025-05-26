@@ -13,3 +13,20 @@ body,
   padding: 0;
   overflow: hidden;
 }
+
+.font-cascadia {
+  font-family: "Cascadia Code", monospace;
+  word-spacing: -2px;
+}
+
+/* Custom style for react-mobile-picker indicator lines */
+.my-custom-picker .rmp-picker-indicator,
+.my-custom-picker .react-mobile-picker-indicator,
+.my-custom-picker .react-mobile-picker__indicator {
+  border-top: 2px dashed #1db954 !important; /* Spotify green, dashed */
+  border-bottom: 2px dashed #1db954 !important;
+  background: transparent !important;
+  height: 0 !important;
+  opacity: 1 !important;
+  box-shadow: none !important;
+}
