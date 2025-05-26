@@ -29,7 +29,7 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
                 'bg-neutral-700'
               }`}
             >
-              <div className="flex flex-col items-center justify-center mb-2">
+              <div className="flex flex-col items-center justify-center">
                 <span className="font-medium text-center">{process.message}</span>
                 {process.status === 'in-progress' && !process.interactive && (
                   <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mt-2"></div>

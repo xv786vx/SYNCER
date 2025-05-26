@@ -14,6 +14,7 @@ export function SyncSpToYt({ onSync }: SyncSpToYtProps) {
       APIErrorHandler.handleError(new Error('Please enter a playlist name'));
       return;
     }
+    console.log('Syncing Spotify playlist:', spPlaylist);
     await onSync(spPlaylist);
     setSpPlaylist('');
   };

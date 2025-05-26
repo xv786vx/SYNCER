@@ -155,6 +155,10 @@ def root():
         logger.error(f"Error in root endpoint: {str(e)}")
         raise APIError("Failed to get application status")
 
+# @app.get("/")
+# def root():
+#     return {"status": "ok"}
+
 @app.get("/api/authenticate")
 def authenticate(): 
     try:

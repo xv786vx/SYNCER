@@ -38,7 +38,9 @@ function formatMs(ms: number) {
 
 function App() {
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
+  const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("1");
+  const [displayedTab, setDisplayedTab] = useState("1"); // NEW: controls which tab's content is shown
   const [processes, setProcesses] = useState<Process[]>([])
   const [songs, setSongs] = useState<SongStatus[]>([])
   const [ytToSpSongs, setYtToSpSongs] = useState<SongStatus[]>([])
@@ -47,7 +49,15 @@ function App() {
   const [toast, setToast] = useState<string | null>(null)
   const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
+  const [tabFade, setTabFade] = useState(true);
 
+  // Fade in effect on tab change
+  const quotaExceeded = quota && quota.total >= quota.limit;
+  useEffect(() => {
+    setTabFade(false);
+    const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
+    return () => clearTimeout(timeout);
+  }, [activeTab, quotaExceeded]);
 
   const fetchQuota = async () => {
       try {
@@ -89,12 +99,13 @@ function App() {
   }
 
   const handleSyncSpToYt = async (playlistName: string) => {
+    console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     try {
       const response = await fetch(`http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.songs) {
-          for (let i = 0; i < data.songs.length; i++) {
+        for (let i = 0; i < data.songs.length; i++) {
           const song = data.songs[i];
           updateProcess(
             processId,
@@ -102,11 +113,11 @@ function App() {
             `Syncing "${song.name} by ${song.artist}" (${i + 1}/${data.songs.length})`
           );
           // Simulate per-song sync delay (remove this if backend is already per-song)
-          await new Promise(res => setTimeout(res, 300)); // 300ms per song for demo
+          await new Promise(res => setTimeout(res, 150)); // 150ms per song for demo
         }
         setSongs(data.songs);
         setSyncedSpPlaylist(playlistName);
-        updateProcess(processId, 'completed', 'Sync analysis complete!');
+        updateProcess(processId, 'completed', 'Sync complete!');
         setToast(data.message || 'Sync complete!');
         fetchQuota();
       }
@@ -122,9 +133,19 @@ function App() {
       const response = await fetch(`http://127.0.0.1:8000/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.songs) {
+        for (let i = 0; i < data.songs.length; i++) {
+          const song = data.songs[i];
+          updateProcess(
+            processId,
+            'in-progress',
+            `Syncing "${song.name} by ${song.artist}" (${i + 1}/${data.songs.length})`
+          );
+          // Simulate per-song sync delay (remove this if backend is already per-song)
+          await new Promise(res => setTimeout(res, 150)); // 150ms per song for demo
+        }
         setYtToSpSongs(data.songs);
         setSyncedYtPlaylist(playlistName);
-        updateProcess(processId, 'completed', 'Sync analysis complete!');
+        updateProcess(processId, 'completed', 'Sync complete!');
         setToast(data.message || 'Sync complete!');
         fetchQuota();
       }
@@ -292,6 +313,26 @@ function App() {
     // { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" }, // uncomment when you want to add download functionality
   ];
 
+  // Fade out, then switch tab, then fade in
+  const handleTabChange = (tabId: string) => {
+    if (tabId === activeTab) return;
+    setTabFade(false); // start fade out
+    setPendingTab(tabId);
+  };
+
+  useEffect(() => {
+    if (!tabFade && pendingTab && pendingTab !== activeTab) {
+      // Wait for fade-out to finish (match duration-200)
+      const timeout = setTimeout(() => {
+        setActiveTab(pendingTab); // update activeTab for button highlight
+        setDisplayedTab(pendingTab); // switch content only after fade-out
+        setTabFade(true); // fade in new content
+        setPendingTab(null);
+      }, 150); // match duration-200
+      return () => clearTimeout(timeout);
+    }
+  }, [tabFade, pendingTab, activeTab]);
+
   return (
     <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-accent-1 text-white font-cascadia relative">
       <ToastContainer />
@@ -334,18 +375,13 @@ function App() {
                 ? "bg-brand-accent-3 text-white"
                 : "bg-brand-accent-1 text-white hover:bg-brand-accent-2"
             }`}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => handleTabChange(tab.id)}
             disabled={!!(quota && quota.total >= quota.limit)}
           >
             {tab.id === "1" || tab.id === "2" ? (
               <>
                 {tab.label} {tab.icon1} to {tab.icon2}
               </>
-            // ) : tab.id === "4" ? (
-            //   <>
-            //     {tab.label} {tab.icon1} {tab.label2}
-            //   </>
-            // ) : (
             ) : (
               tab.label
             )}
@@ -353,10 +389,12 @@ function App() {
         ))}
       </div>
 
-      
-      {/* Main Content */}
-      <div className="w-[216px] p-6">
-        {quota && quota.total >= quota.limit ? (
+      {/* Main Content with fade-in transition */}
+      <div
+        className={`w-[216px] p-6 transition-opacity duration-200 ${tabFade ? 'opacity-100' : 'opacity-0'}`}
+        style={{ pointerEvents: tabFade ? 'auto' : 'none' }}
+      >
+        {quotaExceeded ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="text-3xl font-bold mb-2">yabba dabba doo!</div>
             <div className="text-lg mb-4">YouTube API quota exhausted</div>
@@ -366,10 +404,10 @@ function App() {
           </div>
         ) : (
           <>
-            {activeTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
-            {activeTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
-            {activeTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
-            {activeTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}
+            {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
+            {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
+            {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
+            {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}
           </>
         )}
       </div>
