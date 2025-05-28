@@ -58,13 +58,21 @@ function App() {
     const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
     return () => clearTimeout(timeout);
   }, [activeTab, quotaExceeded]);
-
   const fetchQuota = async () => {
       try {
-        const res = await fetch('https://syncer-hwgu.onrender.com/api/youtube_quota_usage');
+        const res = await fetch('https://syncer-hwgu.onrender.com/api/youtube_quota_usage', {
+          method: 'GET',
+          mode: 'cors',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          }
+        });
         const data = await res.json();
         setQuota({ total: data.total, limit: data.limit });
-      } catch {
+      } catch (error) {
+        console.error("Failed to fetch quota:", error);
         setQuota(null);
       }
     };
@@ -87,13 +95,21 @@ function App() {
       setProcesses(prev => prev.filter(p => p.id !== id));
     }, 2000);
   };
-
   const fetchStatus = async () => {
     try {
-      const response = await fetch('https://syncer-hwgu.onrender.com/');
+      const response = await fetch('https://syncer-hwgu.onrender.com/', {
+        method: 'GET',
+        mode: 'cors',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
       const data = await APIErrorHandler.handleResponse<StatusResponse>(response);
       setData(data);
     } catch (error) {
+      console.error("Fetch status error:", error);
       APIErrorHandler.handleError(error as Error, 'Failed to fetch application status');
     }
   }
@@ -224,12 +240,16 @@ function App() {
       )
     );
   };
-
   const handleFinalize = async () => {
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id);
     const response = await fetch('https://syncer-hwgu.onrender.com/api/finalize_sp_to_yt', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'cors',
+      credentials: 'include',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ playlist_name: syncedSpPlaylist, yt_ids: ytIds }),
     });
     const data = await response.json();
@@ -268,7 +288,12 @@ function App() {
     const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
     const response = await fetch('https://syncer-hwgu.onrender.com/api/finalize_yt_to_sp', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      mode: 'cors',
+      credentials: 'include',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
       body: JSON.stringify({ playlist_name: syncedYtPlaylist, sp_ids: spIds }),
     });
     const data = await response.json();

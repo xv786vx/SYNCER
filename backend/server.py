@@ -1,12 +1,13 @@
 import sys
 import os
 from fastapi import FastAPI, Request, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, ValidationError
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
+import requests
 sys.path.append(os.path.join(os.path.dirname(__file__), 'functions'))
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
@@ -48,16 +49,38 @@ app = FastAPI()
 # TEMPORARY SESSION STORE (replace with DB or secure storage in production)
 session_store = {"authenticated": False}
 
-app.add_middleware(
-    CORSMiddleware,
-    # Allow all origins during development - this is less secure but helps with debugging
-    allow_origins=["*"],  
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    # Enable preflight requests caching
-    max_age=86400,  # 24 hours in seconds
-)
+# Check if we're in CORS dev mode (more permissive settings)
+cors_dev_mode = os.environ.get("CORS_DEV_MODE", "false").lower() == "true"
+
+if cors_dev_mode:
+    # Development/debugging CORS settings - very permissive
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Allow all origins
+        allow_credentials=True,
+        allow_methods=["*"],  # Allow all methods
+        allow_headers=["*"],  # Allow all headers
+        expose_headers=["*"],  # Expose all headers
+        max_age=86400  # 24 hours in seconds
+    )
+else:
+    # More restricted CORS settings for production
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "http://localhost:5173",  # Vite dev server
+            "http://localhost:3000",  # React dev server (if used)
+            "http://localhost:8000",  # Backend server (for testing)
+            "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
+            "https://syncer-hwgu.onrender.com",  # Your deployed backend URL
+            "https://syncer-gt20.onrender.com",  # Previously used backend URL
+        ],
+        allow_credentials=True,
+        allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        allow_headers=["Origin", "Content-Type", "Accept", "Authorization", "X-Requested-With"],
+        expose_headers=["Content-Length", "Content-Disposition"],
+        max_age=86400  # 24 hours in seconds
+    )
 
 
 # Custom exception classes
@@ -311,3 +334,74 @@ def manual_search_yt_to_sp(song: str, artist: str):
     except Exception as e:
         logger.error(f"Error in manual search YouTube to Spotify: {str(e)}")
         raise APIError(f"Failed to perform manual search: {str(e)}")
+
+@app.options("/api/cors_proxy/{path:path}")
+@app.get("/api/cors_proxy/{path:path}")
+@app.post("/api/cors_proxy/{path:path}")
+async def cors_proxy(request: Request, path: str):
+    """
+    A simple CORS proxy to help with local development.
+    Forwards requests to the specified path on the Render server.
+    """
+    target_url = f"https://syncer-hwgu.onrender.com/{path}"
+    
+    try:
+        # Get request headers (excluding host)
+        headers = {k: v for k, v in request.headers.items() if k.lower() != 'host'}
+        
+        # Get request method and handle appropriately
+        method = request.method.lower()
+        
+        if method == "options":
+            # For OPTIONS requests, return CORS headers without forwarding
+            response = Response()
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+            return response
+            
+        if method == "get":
+            # Get query parameters
+            params = dict(request.query_params)
+            
+            # Forward the GET request
+            r = requests.get(target_url, headers=headers, params=params)
+            
+        elif method == "post":
+            # Get request body
+            body = await request.body()
+            
+            # Get content type to properly forward the body
+            content_type = request.headers.get("content-type", "")
+            
+            if "application/json" in content_type:
+                r = requests.post(target_url, headers=headers, json=await request.json())
+            else:
+                r = requests.post(target_url, headers=headers, data=body)
+        else:
+            return JSONResponse(
+                status_code=400,
+                content={"error": f"Method {method} not supported by proxy"}
+            )
+            
+        # Return the response with appropriate CORS headers
+        response = Response(
+            content=r.content,
+            status_code=r.status_code,
+        )
+        
+        # Copy relevant headers from the proxied response
+        for header, value in r.headers.items():
+            if header.lower() not in ["transfer-encoding", "content-encoding", "content-length"]:
+                response.headers[header] = value
+                
+        # Add CORS headers
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in CORS proxy: {str(e)}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"Proxy error: {str(e)}"}
+        )

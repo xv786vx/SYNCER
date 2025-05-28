@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORS Test for SYNCER</title>
+    <style>
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          BlinkMacSystemFont,
+          "Segoe UI",
+          Roboto,
+          Arial,
+          sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        line-height: 1.6;
+        background-color: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+        border-bottom: 2px solid #ddd;
+        padding-bottom: 10px;
+      }
+      .test-section {
+        margin-bottom: 20px;
+        padding: 15px;
+        border-radius: 5px;
+        background-color: #fff;
+        border: 1px solid #ddd;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        margin-right: 10px;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      pre {
+        background-color: #f1f1f1;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+      .success {
+        color: #4caf50;
+      }
+      .error {
+        color: #f44336;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>CORS Test for SYNCER Application</h1>
+
+    <div class="test-section">
+      <h3>Direct API Test</h3>
+      <button id="testDirectApi">Test Direct API Connection</button>
+      <button id="testDirectApiQuota">Test YouTube Quota API</button>
+      <div id="directApiResult"></div>
+    </div>
+
+    <div class="test-section">
+      <h3>CORS Proxy Test</h3>
+      <button id="testProxyApi">Test Proxy API Connection</button>
+      <button id="testProxyApiQuota">Test Proxy YouTube Quota API</button>
+      <div id="proxyApiResult"></div>
+    </div>
+
+    <div class="test-section">
+      <h3>OPTIONS Preflight Test</h3>
+      <button id="testPreflight">Test OPTIONS Preflight</button>
+      <div id="preflightResult"></div>
+    </div>
+
+    <script>
+      // Base URLs
+      const directBaseUrl = "https://syncer-hwgu.onrender.com";
+      const proxyBaseUrl = "http://localhost:8000/api/cors_proxy";
+
+      // Helper function to display results
+      function displayResult(elementId, success, message, data = null) {
+        const element = document.getElementById(elementId);
+        element.innerHTML = "";
+
+        const statusElement = document.createElement("p");
+        statusElement.className = success ? "success" : "error";
+        statusElement.textContent = message;
+        element.appendChild(statusElement);
+
+        if (data) {
+          const preElement = document.createElement("pre");
+          preElement.textContent =
+            typeof data === "string" ? data : JSON.stringify(data, null, 2);
+          element.appendChild(preElement);
+        }
+      }
+
+      // Test direct API connection
+      document
+        .getElementById("testDirectApi")
+        .addEventListener("click", async () => {
+          try {
+            const response = await fetch(`${directBaseUrl}/`, {
+              method: "GET",
+              mode: "cors",
+              credentials: "include",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+              },
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              displayResult(
+                "directApiResult",
+                true,
+                "Direct API connection successful!",
+                data
+              );
+            } else {
+              displayResult(
+                "directApiResult",
+                false,
+                `Direct API connection failed with status: ${response.status}`
+              );
+            }
+          } catch (error) {
+            displayResult(
+              "directApiResult",
+              false,
+              `Direct API connection error: ${error.message}`
+            );
+            console.error("Direct API connection error:", error);
+          }
+        });
+
+      // Test direct API YouTube quota endpoint
+      document
+        .getElementById("testDirectApiQuota")
+        .addEventListener("click", async () => {
+          try {
+            const response = await fetch(
+              `${directBaseUrl}/api/youtube_quota_usage`,
+              {
+                method: "GET",
+                mode: "cors",
+                credentials: "include",
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              displayResult(
+                "directApiResult",
+                true,
+                "YouTube quota API test successful!",
+                data
+              );
+            } else {
+              displayResult(
+                "directApiResult",
+                false,
+                `YouTube quota API test failed with status: ${response.status}`
+              );
+            }
+          } catch (error) {
+            displayResult(
+              "directApiResult",
+              false,
+              `YouTube quota API error: ${error.message}`
+            );
+            console.error("YouTube quota API error:", error);
+          }
+        });
+
+      // Test proxy API connection
+      document
+        .getElementById("testProxyApi")
+        .addEventListener("click", async () => {
+          try {
+            const response = await fetch(`${proxyBaseUrl}/`, {
+              method: "GET",
+              mode: "cors",
+              headers: {
+                Accept: "application/json",
+                "Content-Type": "application/json",
+              },
+            });
+
+            if (response.ok) {
+              const data = await response.json();
+              displayResult(
+                "proxyApiResult",
+                true,
+                "Proxy API connection successful!",
+                data
+              );
+            } else {
+              displayResult(
+                "proxyApiResult",
+                false,
+                `Proxy API connection failed with status: ${response.status}`
+              );
+            }
+          } catch (error) {
+            displayResult(
+              "proxyApiResult",
+              false,
+              `Proxy API connection error: ${error.message}`
+            );
+            console.error("Proxy API connection error:", error);
+          }
+        });
+
+      // Test proxy API YouTube quota endpoint
+      document
+        .getElementById("testProxyApiQuota")
+        .addEventListener("click", async () => {
+          try {
+            const response = await fetch(
+              `${proxyBaseUrl}/api/youtube_quota_usage`,
+              {
+                method: "GET",
+                mode: "cors",
+                headers: {
+                  Accept: "application/json",
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+
+            if (response.ok) {
+              const data = await response.json();
+              displayResult(
+                "proxyApiResult",
+                true,
+                "Proxy YouTube quota API test successful!",
+                data
+              );
+            } else {
+              displayResult(
+                "proxyApiResult",
+                false,
+                `Proxy YouTube quota API test failed with status: ${response.status}`
+              );
+            }
+          } catch (error) {
+            displayResult(
+              "proxyApiResult",
+              false,
+              `Proxy YouTube quota API error: ${error.message}`
+            );
+            console.error("Proxy YouTube quota API error:", error);
+          }
+        });
+
+      // Test OPTIONS preflight
+      document
+        .getElementById("testPreflight")
+        .addEventListener("click", async () => {
+          try {
+            const xhr = new XMLHttpRequest();
+            xhr.open(
+              "OPTIONS",
+              `${directBaseUrl}/api/youtube_quota_usage`,
+              true
+            );
+            xhr.setRequestHeader("Access-Control-Request-Method", "GET");
+            xhr.setRequestHeader(
+              "Access-Control-Request-Headers",
+              "origin, content-type"
+            );
+            xhr.setRequestHeader("Origin", "http://localhost:5173");
+
+            xhr.onload = function () {
+              const corsHeaders = {
+                "Access-Control-Allow-Origin": xhr.getResponseHeader(
+                  "Access-Control-Allow-Origin"
+                ),
+                "Access-Control-Allow-Methods": xhr.getResponseHeader(
+                  "Access-Control-Allow-Methods"
+                ),
+                "Access-Control-Allow-Headers": xhr.getResponseHeader(
+                  "Access-Control-Allow-Headers"
+                ),
+              };
+
+              const success =
+                corsHeaders["Access-Control-Allow-Origin"] !== null;
+              displayResult(
+                "preflightResult",
+                success,
+                success
+                  ? "OPTIONS preflight successful!"
+                  : "OPTIONS preflight failed!",
+                corsHeaders
+              );
+            };
+
+            xhr.onerror = function () {
+              displayResult(
+                "preflightResult",
+                false,
+                "OPTIONS preflight request failed!"
+              );
+            };
+
+            xhr.send();
+          } catch (error) {
+            displayResult(
+              "preflightResult",
+              false,
+              `OPTIONS preflight error: ${error.message}`
+            );
+            console.error("OPTIONS preflight error:", error);
+          }
+        });
+    </script>
+  </body>
+</html>
