@@ -45,6 +45,22 @@ class SyncResponse(BaseModel):
 
 app = FastAPI()
 
+session_store = {"authenticated": False}
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # React dev server (if used)
+        "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
+        "https://syncer-gt20.onrender.com"  # Your deployed frontend, if needed
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
 # Custom exception classes
 class APIError(Exception):
     def __init__(self, message: str, status_code: int = 500, details: Dict[str, Any] = None):
@@ -125,20 +141,6 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 
 # TEMPORARY SESSION STORE (replace with DB or secure storage in production)
-session_store = {"authenticated": False}
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # React dev server (if used)
-        "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
-        "https://syncer-gt20.onrender.com"  # Your deployed frontend, if needed
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 
 # api usage endpoint
@@ -149,6 +151,10 @@ def youtube_quota_usage():
         "total": get_total_quota_used(),
         "limit": 10000
     }
+
+@app.get("/api/testing")
+def testing():
+    return {"message": "Testing endpoint is working",}
 
 
 # app endpoints
