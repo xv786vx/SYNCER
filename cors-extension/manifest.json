@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "SYNCER CORS Fixer",
+  "version": "1.0",
+  "description": "Bypasses CORS restrictions for the SYNCER application",
+  "permissions": ["webRequest", "declarativeNetRequest"],
+  "host_permissions": [
+    "https://syncer-hwgu.onrender.com/*",
+    "http://localhost:5173/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icon16.png",
+      "48": "icon48.png",
+      "128": "icon128.png"
+    }
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "ruleset_1",
+        "enabled": true,
+        "path": "rules.json"
+      }
+    ]
+  }
+}

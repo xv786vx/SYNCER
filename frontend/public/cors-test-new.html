@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CORS Test - Direct API Calls</title>
+    <style>
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+        background-color: #f5f5f5;
+      }
+      h1 {
+        color: #333;
+        text-align: center;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin: 20px 0;
+        justify-content: center;
+      }
+      button {
+        padding: 10px 15px;
+        background-color: #4caf50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        font-size: 16px;
+      }
+      button:hover {
+        background-color: #45a049;
+      }
+      .result {
+        margin: 10px 0;
+        padding: 15px;
+        border-radius: 4px;
+      }
+      .success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+      }
+      .error {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+      }
+      pre {
+        background: #f8f8f8;
+        padding: 10px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>SYNCER CORS Test</h1>
+    <p>
+      This page tests direct API calls to the backend server to verify CORS
+      configuration.
+    </p>
+
+    <div class="controls">
+      <button onclick="testRootEndpoint()">Test Root Endpoint</button>
+      <button onclick="testQuotaEndpoint()">Test Quota Endpoint</button>
+      <button onclick="testWithCredentials()">Test With Credentials</button>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+      const resultsContainer = document.getElementById("results"); // const API_URL = 'https://syncer-hwgu.onrender.com'; // Remote backend
+      const API_URL = "http://localhost:8000"; // Local backend
+
+      function addResult(success, title, message, details = "") {
+        const resultElement = document.createElement("div");
+        resultElement.className = `result ${success ? "success" : "error"}`;
+
+        const titleElement = document.createElement("h3");
+        titleElement.textContent = title;
+
+        const messageElement = document.createElement("p");
+        messageElement.textContent = message;
+
+        resultElement.appendChild(titleElement);
+        resultElement.appendChild(messageElement);
+
+        if (details) {
+          const detailsElement = document.createElement("pre");
+          detailsElement.textContent =
+            typeof details === "object"
+              ? JSON.stringify(details, null, 2)
+              : details;
+          resultElement.appendChild(detailsElement);
+        }
+
+        resultsContainer.prepend(resultElement);
+      }
+
+      async function testRootEndpoint() {
+        try {
+          const response = await fetch(`${API_URL}/`, {
+            method: "GET",
+            mode: "cors",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            addResult(
+              true,
+              "Root Endpoint Test",
+              "Successfully connected to backend root endpoint",
+              data
+            );
+          } else {
+            addResult(
+              false,
+              "Root Endpoint Test",
+              `Failed with status: ${response.status}`,
+              await response.text()
+            );
+          }
+        } catch (error) {
+          addResult(
+            false,
+            "Root Endpoint Test",
+            "Connection failed",
+            error.toString()
+          );
+        }
+      }
+
+      async function testQuotaEndpoint() {
+        try {
+          const response = await fetch(`${API_URL}/api/youtube_quota_usage`, {
+            method: "GET",
+            mode: "cors",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            addResult(
+              true,
+              "Quota Endpoint Test",
+              "Successfully retrieved YouTube quota usage",
+              data
+            );
+          } else {
+            addResult(
+              false,
+              "Quota Endpoint Test",
+              `Failed with status: ${response.status}`,
+              await response.text()
+            );
+          }
+        } catch (error) {
+          addResult(
+            false,
+            "Quota Endpoint Test",
+            "Connection failed",
+            error.toString()
+          );
+        }
+      }
+
+      async function testWithCredentials() {
+        try {
+          const response = await fetch(`${API_URL}/`, {
+            method: "GET",
+            mode: "cors",
+            credentials: "include",
+            headers: {
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            addResult(
+              true,
+              "Credentials Test",
+              "Successfully connected with credentials included",
+              data
+            );
+          } else {
+            addResult(
+              false,
+              "Credentials Test",
+              `Failed with status: ${response.status}`,
+              await response.text()
+            );
+          }
+        } catch (error) {
+          addResult(
+            false,
+            "Credentials Test",
+            "Connection failed",
+            error.toString()
+          );
+        }
+      }
+
+      // Add response headers display for CORS debugging
+      async function showResponseHeaders(url, options) {
+        try {
+          const response = await fetch(url, options);
+          const headers = {};
+          response.headers.forEach((value, key) => {
+            headers[key] = value;
+          });
+          addResult(true, "Response Headers", `Headers from ${url}`, headers);
+          return response;
+        } catch (error) {
+          addResult(
+            false,
+            "Response Headers",
+            "Failed to fetch headers",
+            error.toString()
+          );
+          throw error;
+        }
+      }
+    </script>
+  </body>
+</html>

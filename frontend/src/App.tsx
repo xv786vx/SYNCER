@@ -1,19 +1,20 @@
 // import reactLogo from './assets/react.svg'
 // import viteLogo from '/vite.svg'
 // import './App.css'
-import { useState, useEffect } from 'react'
-import { FaSpotify } from 'react-icons/fa'
-import { SiYoutube } from 'react-icons/si'
-import { ToastContainer } from 'react-toastify'
-import 'react-toastify/dist/ReactToastify.css'
-import { APIErrorHandler } from './utils/errorHandling'
-import { SyncSpToYt } from './components/SyncSpToYt'
-import { SyncYtToSp } from './components/SyncYtToSp'
-import { MergePlaylists } from './components/MergePlaylists'
-import { DownloadSong } from './components/DownloadSong'
-import { SongSyncStatus } from './components/SongSyncStatus'
-import { ProcessesOverlay } from './components/ProcessesOverlay'
-import { Process, SongStatus, APIResponse, StatusResponse } from './types'
+import { useEffect, useState } from 'react';
+import { FaSpotify } from 'react-icons/fa';
+import { SiYoutube } from 'react-icons/si';
+import './App.css';
+import { APIErrorHandler } from './utils/errorHandling';
+import * as API from './utils/apiClient'; // Use direct API calls with proper CORS headers
+import { SyncSpToYt } from './components/SyncSpToYt';
+import { SyncYtToSp } from './components/SyncYtToSp';
+import { MergePlaylists } from './components/MergePlaylists';
+import { ProcessesOverlay } from './components/ProcessesOverlay';
+import { DownloadSong } from './components/DownloadSong';
+import { SongSyncStatus } from './components/SongSyncStatus';
+import { ToastContainer } from './components/Toast';
+import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
 
 function getMsUntilMidnightEST() {
   // Get current time in UTC
@@ -60,16 +61,7 @@ function App() {
   }, [activeTab, quotaExceeded]);
   const fetchQuota = async () => {
       try {
-        const res = await fetch('https://syncer-hwgu.onrender.com/api/youtube_quota_usage', {
-          method: 'GET',
-          mode: 'cors',
-          credentials: 'include',
-          headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          }
-        });
-        const data = await res.json();
+        const data = await API.getYoutubeQuota() as { total: number; limit: number };
         setQuota({ total: data.total, limit: data.limit });
       } catch (error) {
         console.error("Failed to fetch quota:", error);
@@ -94,32 +86,20 @@ function App() {
     setTimeout(() => {
       setProcesses(prev => prev.filter(p => p.id !== id));
     }, 2000);
-  };
-  const fetchStatus = async () => {
+  };  const fetchStatus = async () => {
     try {
-      const response = await fetch('https://syncer-hwgu.onrender.com/', {
-        method: 'GET',
-        mode: 'cors',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
-      const data = await APIErrorHandler.handleResponse<StatusResponse>(response);
+      const data = await API.getStatus() as StatusResponse;
       setData(data);
     } catch (error) {
       console.error("Fetch status error:", error);
       APIErrorHandler.handleError(error as Error, 'Failed to fetch application status');
     }
   }
-
   const handleSyncSpToYt = async (playlistName: string) => {
     console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     try {
-      const response = await fetch(`https://syncer-hwgu.onrender.com/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`);
-      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      const data = await API.syncSpToYt(playlistName) as APIResponse;
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
           const song = data.songs[i];
@@ -142,12 +122,10 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
-
   const handleSyncYtToSp = async (playlistName: string) => {
     const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
     try {
-      const response = await fetch(`https://syncer-hwgu.onrender.com/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`);
-      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      const data = await API.syncYtToSp(playlistName) as APIResponse;
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
           const song = data.songs[i];
@@ -170,12 +148,10 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
-
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string) => {
     const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
     try {
-      const response = await fetch(`https://syncer-hwgu.onrender.com/api/merge_playlists?yt_playlist=${encodeURIComponent(ytPlaylist)}&sp_playlist=${encodeURIComponent(spPlaylist)}&merge_name=${encodeURIComponent(mergeName)}`);
-      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName) as APIResponse;
       if (data.result) {
         setToast(data.result);
         updateProcess(processId, 'completed', 'Playlists merged successfully!');
@@ -197,12 +173,10 @@ function App() {
       APIErrorHandler.handleError(error as Error, message);
     }
   };
-
   const handleDownloadSong = async (songTitle: string, artists: string) => {
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
     try {
-      const response = await fetch(`https://syncer-hwgu.onrender.com/api/download_yt_song?song_name=${encodeURIComponent(songTitle)}&artists=${encodeURIComponent(artists)}`);
-      const data = await APIErrorHandler.handleResponse<APIResponse>(response);
+      const data = await API.downloadYtSong(songTitle, artists) as APIResponse;
       if (data.result) {
         setToast(data.result);
         updateProcess(processId, 'completed', 'Download completed successfully!');
@@ -214,12 +188,8 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to download song');
     }
   };
-
   const handleManualSearch = async (song: SongStatus, idx: number) => {
-    const response = await fetch(
-      `https://syncer-hwgu.onrender.com/api/manual_search_sp_to_yt?song=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`
-    );
-    const data = await response.json();
+    const data = await API.manualSearchSpToYt(song.name, song.artist) as { status: string; yt_id?: string };
     setSongs(prev =>
       prev.map((s, i) =>
         i === idx
@@ -241,28 +211,16 @@ function App() {
     );
   };
   const handleFinalize = async () => {
-    const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id);
-    const response = await fetch('https://syncer-hwgu.onrender.com/api/finalize_sp_to_yt', {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'include',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ playlist_name: syncedSpPlaylist, yt_ids: ytIds }),
-    });
-    const data = await response.json();
+    const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
+    const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds) as { message?: string };
     setToast(data.message || 'Sync complete!');
     setSongs([]);
     setSyncedSpPlaylist('');
   };
 
   const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
-    const response = await fetch(
-      `https://syncer-hwgu.onrender.com/api/manual_search_yt_to_sp?song=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`
-    );
-    const data = await response.json();
+    // Using type assertion to APIResponse to avoid TypeScript error
+    const data = await API.manualSearchYtToSp(song.name, song.artist) as { status: string; sp_id?: string };
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
         i === idx
@@ -286,17 +244,7 @@ function App() {
 
   const handleFinalizeYtToSp = async () => {
     const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
-    const response = await fetch('https://syncer-hwgu.onrender.com/api/finalize_yt_to_sp', {
-      method: 'POST',
-      mode: 'cors',
-      credentials: 'include',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Accept': 'application/json'
-      },
-      body: JSON.stringify({ playlist_name: syncedYtPlaylist, sp_ids: spIds }),
-    });
-    const data = await response.json();
+    const data = await API.finalizeYtToSp(syncedYtPlaylist, spIds) as { message?: string };
     setToast(data.message || 'Sync complete!');
     setYtToSpSongs([]);
     setSyncedYtPlaylist('');

@@ -51,9 +51,11 @@ session_store = {"authenticated": False}
 
 # Check if we're in CORS dev mode (more permissive settings)
 cors_dev_mode = os.environ.get("CORS_DEV_MODE", "false").lower() == "true"
+logger.info(f"CORS Dev Mode: {cors_dev_mode}")
 
 if cors_dev_mode:
     # Development/debugging CORS settings - very permissive
+    logger.info("Using permissive CORS settings (development mode)")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],  # Allow all origins
@@ -65,6 +67,7 @@ if cors_dev_mode:
     )
 else:
     # More restricted CORS settings for production
+    logger.info("Using restricted CORS settings (production mode)")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=[
