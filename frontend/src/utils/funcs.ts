@@ -11,7 +11,7 @@ export async function getThing(url: string) {
 export async function syncSpToYt(playlistName: string) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`
+      `https://syncer-hwgu.onrender.com/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`
     );
     return APIErrorHandler.handleResponse(response);
   }, "Failed to sync Spotify playlist to YouTube");
@@ -21,7 +21,7 @@ export async function syncSpToYt(playlistName: string) {
 export async function finalizeSpToYt(playlistName: string, ytIds: string[]) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/finalize_sp_to_yt`,
+      `https://syncer-hwgu.onrender.com/api/finalize_sp_to_yt`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -36,7 +36,7 @@ export async function finalizeSpToYt(playlistName: string, ytIds: string[]) {
 export async function manualSearchSpToYt(song: string, artist: string) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/manual_search_sp_to_yt?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}`
+      `https://syncer-hwgu.onrender.com/api/manual_search_sp_to_yt?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}`
     );
     return APIErrorHandler.handleResponse(response);
   }, "Failed to perform manual search");
@@ -46,7 +46,7 @@ export async function manualSearchSpToYt(song: string, artist: string) {
 export async function syncYtToSp(playlistName: string) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`
+      `https://syncer-hwgu.onrender.com/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`
     );
     return APIErrorHandler.handleResponse(response);
   }, "Failed to sync YouTube playlist to Spotify");
@@ -56,7 +56,7 @@ export async function syncYtToSp(playlistName: string) {
 export async function finalizeYtToSp(playlistName: string, spIds: string[]) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/finalize_yt_to_sp`,
+      `https://syncer-hwgu.onrender.com/api/finalize_yt_to_sp`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -71,7 +71,7 @@ export async function finalizeYtToSp(playlistName: string, spIds: string[]) {
 export async function manualSearchYtToSp(song: string, artist: string) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `http://127.0.0.1:8000/api/manual_search_yt_to_sp?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}`
+      `https://syncer-hwgu.onrender.com/api/manual_search_yt_to_sp?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}`
     );
     return APIErrorHandler.handleResponse(response);
   }, "Failed to perform manual search");

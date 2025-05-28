@@ -29,6 +29,8 @@ class YoutubeProvider(Provider):
         scopes =   ['https://www.googleapis.com/auth/youtube.readonly',
                     'https://www.googleapis.com/auth/youtube']
         
+        # Check if we're running on Render or locally
+        is_render = os.environ.get("RENDER", "false").lower() == "true"
 
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         token_dir = os.path.join(root_dir, 'auth_tokens')
@@ -36,6 +38,30 @@ class YoutubeProvider(Provider):
         TOKEN_FILE = os.path.join(token_dir, 'token.json')
         CLIENT_SECRETS_FILE = os.path.join(token_dir, 'desktop_client_secrets.json')
 
+        # Create client_secrets JSON if it doesn't exist
+        if not os.path.exists(CLIENT_SECRETS_FILE) or is_render:
+            print("Creating client_secrets.json file from environment variables...")
+            
+            # Determine the appropriate redirect URIs based on environment
+            redirect_uris = yt_redirect_uri.split(',')
+            if is_render:
+                # Filter to only include deployed URIs
+                redirect_uris = [uri for uri in redirect_uris 
+                                if 'localhost' not in uri or 'syncer-hwgu.onrender.com' in uri]
+                print(f"Using deployed redirect URIs: {redirect_uris}")
+            
+            with open(CLIENT_SECRETS_FILE, 'w') as f:
+                f.write(f'''{{
+                    "web": {{
+                        "client_id": "{yt_client_id}",
+                        "project_id": "{yt_project_id}",
+                        "auth_uri": "{yt_auth_uri}",
+                        "token_uri": "{yt_token_uri}",
+                        "auth_provider_x509_cert_url": "{yt_auth_provider_x509_cert_url}",
+                        "client_secret": "{yt_client_secret}",
+                        "redirect_uris": {redirect_uris}
+                    }}
+                }}''')
 
         credentials = None
         
@@ -53,20 +79,16 @@ class YoutubeProvider(Provider):
                         # Save the refreshed credentials
                         with open(TOKEN_FILE, "w") as token_file:
                             token_file.write(credentials.to_json())
-                    except RefreshError as re:
-                        print(f"Refresh token failed during load: {re}. Deleting token and starting new auth flow.")
+                    except RefreshError as e:
+                        print(f"Error refreshing token: {str(e)}. Will need to reauthorize.")
                         credentials = None
                         if os.path.exists(TOKEN_FILE):
                             os.remove(TOKEN_FILE)
-                # --- ADDED: Check if token is valid even if not expired ---
-                elif credentials and not credentials.valid:
-                     print("Existing token is invalid. Deleting token and starting new auth flow.")
-                     credentials = None
-                     if os.path.exists(TOKEN_FILE):
-                         os.remove(TOKEN_FILE)
-
+                    except Exception as e:
+                        print(f"Unexpected error refreshing token: {str(e)}. Will try to reauthorize.")
+                        credentials = None
             except Exception as e:
-                print(f"Error loading credentials: {e}. Deleting token and starting new auth flow.")
+                print(f"Error loading credentials: {str(e)}. Will need to reauthorize.")
                 credentials = None
                 if os.path.exists(TOKEN_FILE):
                     os.remove(TOKEN_FILE)
@@ -450,4 +472,4 @@ class YoutubeProvider(Provider):
             'noplaylist': False,  # Make sure to download the whole playlist
         }
 
-        yt_dlp.YoutubeDL(ydl_opts).download([playlist_url]) 
+        yt_dlp.YoutubeDL(ydl_opts).download([playlist_url])

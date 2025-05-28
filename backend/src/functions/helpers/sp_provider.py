@@ -21,14 +21,25 @@ class SpotifyProvider(Provider):
         self.cache_path = os.path.join(token_dir, '.cache')
         self.client_id = sp_client_id
         self.client_secret = sp_client_secret
-        self.redirect_uri = "http://localhost:3000/callback" # Store redirect URI
-        self.scope = "playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative" # Store scope
+        
+        # Check if we're running on Render or locally
+        is_render = os.environ.get("RENDER", "false").lower() == "true"
+        
+        if is_render:
+            # If deployed, use the deployed URL (add this environment variable on Render)
+            self.redirect_uri = os.environ.get("SPOTIFY_REDIRECT_URI", "https://syncer-hwgu.onrender.com/callback")
+            print(f"Running in deployed mode, using redirect URI: {self.redirect_uri}")
+        else:
+            # Locally, use localhost
+            self.redirect_uri = "http://localhost:3000/callback"
+            print(f"Running in local mode, using redirect URI: {self.redirect_uri}")
+            
+        self.scope = "playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative"
 
-        # --- Delete cache if it exists to force re-auth on startup (for debugging) ---
-        if os.path.exists(self.cache_path):
-             print("Deleting existing Spotify cache file to force re-authentication...")
-             os.remove(self.cache_path)
-        # --- End of debug deletion ---
+        # DEBUG: Only delete cache in local dev environment
+        if not is_render and os.path.exists(self.cache_path):
+            print("Deleting existing Spotify cache file to force re-authentication...")
+            os.remove(self.cache_path)
 
         self.sp = self.init_spotify_client() # Store the client instance
 
