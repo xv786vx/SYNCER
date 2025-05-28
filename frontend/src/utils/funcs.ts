@@ -2,15 +2,7 @@ import { APIErrorHandler, withErrorHandling } from "./errorHandling";
 
 export async function getThing(url: string) {
   return withErrorHandling(async () => {
-    const response = await fetch(url, {
-      method: "GET",
-      mode: "cors",
-      credentials: "include",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-      },
-    });
+    const response = await fetch(url);
     return APIErrorHandler.handleResponse(response);
   }, "Failed to fetch data");
 }
@@ -19,16 +11,7 @@ export async function getThing(url: string) {
 export async function syncSpToYt(playlistName: string) {
   return withErrorHandling(async () => {
     const response = await fetch(
-      `https://syncer-hwgu.onrender.com/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`,
-      {
-        method: "GET",
-        mode: "cors",
-        credentials: "include",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-      }
+      `https://syncer-hwgu.onrender.com/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`
     );
     return APIErrorHandler.handleResponse(response);
   }, "Failed to sync Spotify playlist to YouTube");

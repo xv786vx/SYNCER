@@ -59,12 +59,12 @@ function App() {
     const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
     return () => clearTimeout(timeout);
   }, [activeTab, quotaExceeded]);
+
   const fetchQuota = async () => {
       try {
         const data = await API.getYoutubeQuota() as { total: number; limit: number };
         setQuota({ total: data.total, limit: data.limit });
-      } catch (error) {
-        console.error("Failed to fetch quota:", error);
+      } catch {
         setQuota(null);
       }
     };
@@ -86,12 +86,13 @@ function App() {
     setTimeout(() => {
       setProcesses(prev => prev.filter(p => p.id !== id));
     }, 2000);
-  };  const fetchStatus = async () => {
+  };
+
+  const fetchStatus = async () => {
     try {
       const data = await API.getStatus() as StatusResponse;
       setData(data);
     } catch (error) {
-      console.error("Fetch status error:", error);
       APIErrorHandler.handleError(error as Error, 'Failed to fetch application status');
     }
   }
@@ -210,6 +211,7 @@ function App() {
       )
     );
   };
+
   const handleFinalize = async () => {
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
     const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds) as { message?: string };
