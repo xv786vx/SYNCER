@@ -41,14 +41,11 @@ class YoutubeProvider(Provider):
         # Create client_secrets JSON if it doesn't exist
         if not os.path.exists(CLIENT_SECRETS_FILE) or is_render:
             print("Creating client_secrets.json file from environment variables...")
-            
-            # Determine the appropriate redirect URIs based on environment
+              # Determine the appropriate redirect URIs based on environment
             redirect_uris = yt_redirect_uri.split(',')
-            if is_render:
-                # Filter to only include deployed URIs
-                redirect_uris = [uri for uri in redirect_uris 
-                                if 'localhost' not in uri or 'syncer-hwgu.onrender.com' in uri]
-                print(f"Using deployed redirect URIs: {redirect_uris}")
+            
+            # Keep all URIs - we need both localhost and deployed URIs for flexibility
+            print(f"Using redirect URIs: {redirect_uris}")
             
             with open(CLIENT_SECRETS_FILE, 'w') as f:
                 f.write(f'''{{

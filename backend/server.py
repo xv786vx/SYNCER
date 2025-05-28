@@ -50,18 +50,13 @@ session_store = {"authenticated": False}
 
 app.add_middleware(
     CORSMiddleware,
-    # Allow specific origins for better security
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # React dev server (if used)
-        "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
-        "https://syncer-hwgu.onrender.com",  # Your actual deployed backend URL
-        "https://syncer-gt20.onrender.com",  # Your previously used backend URL
-        "*"  # During testing only - remove this in production!
-    ],
+    # Allow all origins during development - this is less secure but helps with debugging
+    allow_origins=["*"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # Enable preflight requests caching
+    max_age=86400,  # 24 hours in seconds
 )
 
 
@@ -155,7 +150,17 @@ def youtube_quota_usage():
 
 @app.get("/api/testing")
 def testing():
-    return {"message": "Testing endpoint is working",}
+    return {"message": "Testing endpoint is working"}
+
+@app.options("/api/cors_test")
+@app.get("/api/cors_test")
+def cors_test():
+    """Test endpoint to verify CORS configuration"""
+    return {
+        "message": "CORS is working correctly",
+        "timestamp": datetime.now().isoformat(),
+        "origin": "*"  # In a real app would return the actual origin
+    }
 
 
 # app endpoints
