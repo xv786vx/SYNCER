@@ -129,7 +129,12 @@ session_store = {"authenticated": False}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production: ["chrome-extension://<your-extension-id>"]
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # React dev server (if used)
+        "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
+        "https://syncer-gt20.onrender.com"  # Your deployed frontend, if needed
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

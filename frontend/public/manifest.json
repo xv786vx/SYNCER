@@ -7,7 +7,9 @@
     "default_popup": "index.html"
   },
   "permissions": ["scripting", "activeTab"],
-  "host_permissions": ["http://*/*", "https://*/*"],
+  "host_permissions": [
+    "https://syncer-gt20.onrender.com/*"
+  ],
   "icons": {
     "16": "icon16.png",
     "32": "icon32.png",
