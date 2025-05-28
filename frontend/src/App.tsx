@@ -61,7 +61,7 @@ function App() {
 
   const fetchQuota = async () => {
       try {
-        const res = await fetch('https://syncer-gt20.onrender.com/api/youtube_quota_usage');
+        const res = await fetch('https://syncer-hwgu.onrender.com/api/youtube_quota_usage');
         const data = await res.json();
         setQuota({ total: data.total, limit: data.limit });
       } catch {
@@ -90,7 +90,7 @@ function App() {
 
   const fetchStatus = async () => {
     try {
-      const response = await fetch('https://syncer-gt20.onrender.com/');
+      const response = await fetch('https://syncer-hwgu.onrender.com/');
       const data = await APIErrorHandler.handleResponse<StatusResponse>(response);
       setData(data);
     } catch (error) {
@@ -102,7 +102,7 @@ function App() {
     console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     try {
-      const response = await fetch(`https://syncer-gt20.onrender.com/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`);
+      const response = await fetch(`https://syncer-hwgu.onrender.com/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
@@ -130,7 +130,7 @@ function App() {
   const handleSyncYtToSp = async (playlistName: string) => {
     const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
     try {
-      const response = await fetch(`https://syncer-gt20.onrender.com/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`);
+      const response = await fetch(`https://syncer-hwgu.onrender.com/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
@@ -158,7 +158,7 @@ function App() {
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string) => {
     const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
     try {
-      const response = await fetch(`https://syncer-gt20.onrender.com/api/merge_playlists?yt_playlist=${encodeURIComponent(ytPlaylist)}&sp_playlist=${encodeURIComponent(spPlaylist)}&merge_name=${encodeURIComponent(mergeName)}`);
+      const response = await fetch(`https://syncer-hwgu.onrender.com/api/merge_playlists?yt_playlist=${encodeURIComponent(ytPlaylist)}&sp_playlist=${encodeURIComponent(spPlaylist)}&merge_name=${encodeURIComponent(mergeName)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.result) {
         setToast(data.result);
@@ -185,7 +185,7 @@ function App() {
   const handleDownloadSong = async (songTitle: string, artists: string) => {
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
     try {
-      const response = await fetch(`https://syncer-gt20.onrender.com/api/download_yt_song?song_name=${encodeURIComponent(songTitle)}&artists=${encodeURIComponent(artists)}`);
+      const response = await fetch(`https://syncer-hwgu.onrender.com/api/download_yt_song?song_name=${encodeURIComponent(songTitle)}&artists=${encodeURIComponent(artists)}`);
       const data = await APIErrorHandler.handleResponse<APIResponse>(response);
       if (data.result) {
         setToast(data.result);
@@ -201,7 +201,7 @@ function App() {
 
   const handleManualSearch = async (song: SongStatus, idx: number) => {
     const response = await fetch(
-      `https://syncer-gt20.onrender.com/api/manual_search_sp_to_yt?song=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`
+      `https://syncer-hwgu.onrender.com/api/manual_search_sp_to_yt?song=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`
     );
     const data = await response.json();
     setSongs(prev =>
@@ -227,7 +227,7 @@ function App() {
 
   const handleFinalize = async () => {
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id);
-    const response = await fetch('https://syncer-gt20.onrender.com/api/finalize_sp_to_yt', {
+    const response = await fetch('https://syncer-hwgu.onrender.com/api/finalize_sp_to_yt', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlist_name: syncedSpPlaylist, yt_ids: ytIds }),
@@ -240,7 +240,7 @@ function App() {
 
   const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
     const response = await fetch(
-      `https://syncer-gt20.onrender.com/api/manual_search_yt_to_sp?song=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`
+      `https://syncer-hwgu.onrender.com/api/manual_search_yt_to_sp?song=${encodeURIComponent(song.name)}&artist=${encodeURIComponent(song.artist)}`
     );
     const data = await response.json();
     setYtToSpSongs(prev =>
@@ -266,7 +266,7 @@ function App() {
 
   const handleFinalizeYtToSp = async () => {
     const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
-    const response = await fetch('https://syncer-gt20.onrender.com/api/finalize_yt_to_sp', {
+    const response = await fetch('https://syncer-hwgu.onrender.com/api/finalize_yt_to_sp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ playlist_name: syncedYtPlaylist, sp_ids: spIds }),

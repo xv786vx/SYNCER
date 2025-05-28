@@ -50,15 +50,15 @@ session_store = {"authenticated": False}
 
 app.add_middleware(
     CORSMiddleware,
-    # During testing, allow all origins
-    allow_origins=["*"],
-    # Uncomment this when you confirm the deployment is working
-    # allow_origins=[
-    #     "http://localhost:5173",  # Vite dev server
-    #     "http://localhost:3000",  # React dev server (if used)
-    #     "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
-    #     "https://syncer-gt20.onrender.com"  # Your deployed frontend, if needed
-    # ],
+    # Allow specific origins for better security
+    allow_origins=[
+        "http://localhost:5173",  # Vite dev server
+        "http://localhost:3000",  # React dev server (if used)
+        "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
+        "https://syncer-hwgu.onrender.com",  # Your actual deployed backend URL
+        "https://syncer-gt20.onrender.com",  # Your previously used backend URL
+        "*"  # During testing only - remove this in production!
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
