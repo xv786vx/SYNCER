@@ -45,16 +45,20 @@ class SyncResponse(BaseModel):
 
 app = FastAPI()
 
+# TEMPORARY SESSION STORE (replace with DB or secure storage in production)
 session_store = {"authenticated": False}
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",  # Vite dev server
-        "http://localhost:3000",  # React dev server (if used)
-        "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
-        "https://syncer-gt20.onrender.com"  # Your deployed frontend, if needed
-    ],
+    # During testing, allow all origins
+    allow_origins=["*"],
+    # Uncomment this when you confirm the deployment is working
+    # allow_origins=[
+    #     "http://localhost:5173",  # Vite dev server
+    #     "http://localhost:3000",  # React dev server (if used)
+    #     "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
+    #     "https://syncer-gt20.onrender.com"  # Your deployed frontend, if needed
+    # ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -140,9 +144,6 @@ async def general_exception_handler(request: Request, exc: Exception):
     )
 
 
-# TEMPORARY SESSION STORE (replace with DB or secure storage in production)
-
-
 # api usage endpoint
 @app.get("/api/youtube_quota_usage")
 def youtube_quota_usage():
@@ -161,14 +162,15 @@ def testing():
 @app.get("/")
 def root():
     try:
-        return {"name": "Syncer", "authenticated": session_store["authenticated"]}
+        return {"name": "Syncer", "authenticated": session_store["authenticated"], "version": "1.0.1"}
     except Exception as e:
         logger.error(f"Error in root endpoint: {str(e)}")
         raise APIError("Failed to get application status")
 
-# @app.get("/")
-# def root():
-#     return {"status": "ok"}
+# Simple version endpoint to verify deployment
+@app.get("/version")
+def version():
+    return {"version": "1.0.1", "deployed": True}
 
 @app.get("/api/authenticate")
 def authenticate(): 
