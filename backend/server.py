@@ -17,7 +17,7 @@ from src.functions.merge_playlists import merge_playlists
 from src.functions.download_yt_song import download_yt_song
 from src.functions.helpers.yt_provider import YoutubeProvider
 from src.functions.helpers.sp_provider import SpotifyProvider
-from src.functions.helpers.quota_tracker import get_total_quota_used, quota_usage, YT_API_QUOTA_COSTS
+from src.functions.helpers.quota_tracker import get_total_quota_used, quota_usage, YT_API_QUOTA_COSTS, set_total_quota_value
 
 # Create logs directory if it doesn't exist
 logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -172,6 +172,16 @@ def youtube_quota_usage():
         "total": get_total_quota_used(),
         "limit": 10000
     }
+
+# Endpoint to set quota value manually
+@app.post("/api/set_youtube_quota")
+def set_youtube_quota(quota_value: int = Body(...)):
+    try:
+        set_total_quota_value(quota_value)
+        return {"status": "success", "message": f"YouTube API quota set to {quota_value}"}
+    except Exception as e:
+        logger.error(f"Error setting YouTube quota: {str(e)}")
+        raise APIError(f"Failed to set YouTube quota: {str(e)}")
 
 @app.get("/api/testing")
 def testing():

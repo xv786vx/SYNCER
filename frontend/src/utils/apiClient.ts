@@ -137,6 +137,43 @@ export async function getYoutubeQuota() {
   }, "Failed to get YouTube quota usage");
 }
 
+/**
+ * Set YouTube API Quota Usage Value
+ *
+ * This function allows manually setting the YouTube API quota usage count
+ * to maintain accuracy when switching between environments.
+ *
+ * IMPORTANT: Use this function to synchronize quota counts between local and deployed environments:
+ *
+ * When to use:
+ * 1. When switching from local development to deployed backend:
+ *    - Check your current quota count from local backend
+ *    - Set the same quota value on the deployed backend
+ *
+ * 2. When switching from deployed to local development:
+ *    - Check the quota count from the deployed backend
+ *    - Set the same quota value on your local backend
+ *
+ * Example:
+ * ```
+ * // If you know the current quota is 4332
+ * await setYoutubeQuota(4332);
+ * ```
+ *
+ * @param quotaValue The desired quota usage value to set
+ * @returns API response or null if an error occurred
+ */
+export async function setYoutubeQuota(quotaValue: number) {
+  const url = `${API_BASE_URL}/api/set_youtube_quota`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url, {
+      method: "POST",
+      body: JSON.stringify({ quota_value: quotaValue }),
+    });
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to set YouTube quota usage");
+}
+
 // Merge Spotify and YouTube playlists
 export async function mergePlaylists(
   ytPlaylist: string,
