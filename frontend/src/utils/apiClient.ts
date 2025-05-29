@@ -15,13 +15,13 @@
  *
  * 3. API_BASE_URL can be configured to switch between:
  *    - Local backend (http://localhost:8000) for development
- *    - Remote backend (https://syncer-hwgu.onrender.com) for production
+ *    - Remote backend (https://syncer-26vh.onrender.com) for production
  */
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
 
 // Base URL configuration
-// const API_BASE_URL = "https://syncer-hwgu.onrender.com"; // Remote backend
-const API_BASE_URL = "http://localhost:8000"; // Local backend for development
+const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend
+// const API_BASE_URL = "http://localhost:8000"; // Local backend for development
 
 // Common fetch options to use for all requests
 const defaultFetchOptions: RequestInit = {
