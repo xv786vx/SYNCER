@@ -6,14 +6,22 @@ interface ProcessesOverlayProps {
 }
 
 export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps) {
-  return (
-    <div
-      className="absolute inset-0 bg-black bg-opacity-75 z-50 flex items-center justify-center"
+  return (    <div
+      className="absolute z-50 bg-black bg-opacity-75"
       onClick={onDismiss}
-      style={{ cursor: 'pointer' }}
+      style={{ 
+        cursor: 'pointer',
+        top: 0,
+        left: 0,
+        width: '360px', // Explicit width
+        height: '360px', // Explicit height matching index.css
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
     >
       <div
-        className="w-full max-w-[360px] p-4 font-cascadia"
+        className="mx-auto max-w-[300px] p-4 font-cascadia"
         onClick={e => e.stopPropagation()}
         style={{ cursor: 'default' }}
       >
@@ -41,4 +49,4 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
       </div>
     </div>
   );
-} 
+}

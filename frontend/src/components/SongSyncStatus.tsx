@@ -14,16 +14,26 @@ interface SongSyncStatusProps {
 export function SongSyncStatus({ songs, onFinalize }: SongSyncStatusProps) {
   // Picker expects value as an object: { columnName: value }
   const [pickerValue, setPickerValue] = useState<{ song: string }>({ song: '0' });
-
-  return (
-    <div className="absolute inset-0 bg-black bg-opacity-85 z-50 flex items-center justify-center">
-      <div className="w-full max-w-[400px] p-6 rounded-lg shadow-lg font-cascadia flex flex-col items-center">
-        <h3 className="text-lg font-semibold mb-4 text-center">Song Sync Status</h3>
-        <div className="w-full flex justify-center mb-4 text-sm">
+    return (
+    <div 
+      className="absolute z-50 bg-black bg-opacity-85" 
+      style={{ 
+        top: 0,
+        left: 0,
+        width: '360px', // Explicit width
+        height: '360px', // Explicit height matching index.css
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center'
+      }}
+    >
+      <div className="mx-auto max-w-[300px] p-4 rounded-lg shadow-lg font-cascadia flex flex-col items-center">
+        <h3 className="text-lg font-semibold mb-2 text-center">Song Sync Status</h3>
+        <div className="w-full flex justify-center mb-2 text-sm">
           <Picker
             value={pickerValue}
             onChange={setPickerValue}
-            height={168}
+            height={148}
             itemHeight={36}
             wheelMode="normal"
             style={{ border: 'none', boxShadow: 'none', background: 'transparent'}} // Remove outer bars
@@ -42,7 +52,7 @@ export function SongSyncStatus({ songs, onFinalize }: SongSyncStatusProps) {
             </Picker.Column>
           </Picker>
         </div>
-        <div className="flex gap-2 mb-4">
+        <div className="flex gap-2 mb-2">
           {/* <button
             className="px-2 py-1 bg-blue-700 hover:bg-blue-600 text-xs rounded"
             onClick={() => onManualSearch(songs[Number(pickerValue.song)], Number(pickerValue.song))}
@@ -57,7 +67,7 @@ export function SongSyncStatus({ songs, onFinalize }: SongSyncStatusProps) {
           </button> */}
         </div>
         <button
-          className="px-4 py-2 bg-brand-green-dark hover:bg-brand-green rounded mx-auto block"
+          className="px-2 py-2 bg-brand-green-dark hover:bg-brand-green rounded mx-auto block text-sm"
           disabled={songs.some(s => s.status === 'not_found' && !s.requires_manual_search)}
           onClick={onFinalize}
         >

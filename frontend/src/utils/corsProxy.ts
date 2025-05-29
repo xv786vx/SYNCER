@@ -28,7 +28,7 @@ async function fetchApi(
     },
   };
 
-  return fetch(proxyUrl, fetchOptions);
+  return fetch(url, fetchOptions);
 }
 
 // Generic GET request

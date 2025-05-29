@@ -14,6 +14,7 @@ import { ProcessesOverlay } from './components/ProcessesOverlay';
 import { DownloadSong } from './components/DownloadSong';
 import { SongSyncStatus } from './components/SongSyncStatus';
 import { ToastContainer } from './components/Toast';
+import { ToastNotification } from './components/ToastNotification';
 import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
 
 function getMsUntilMidnightEST() {
@@ -273,11 +274,29 @@ function App() {
       return () => clearInterval(interval);
     }
   }, [quota]);
+  // State to track toast fade-out animation
+  const [toastFading, setToastFading] = useState(false);
 
   useEffect(() => {
     if (toast) {
-      const timer = setTimeout(() => setToast(null), 3500);
-      return () => clearTimeout(timer);
+      // Reset fade state when a new toast appears
+      setToastFading(false);
+      
+      // Start fade-out after 4.5 seconds
+      const fadeTimer = setTimeout(() => {
+        setToastFading(true);
+      }, 4500);
+      
+      // Remove toast after fade completes (total 5s = 4.5s display + 0.5s fade)
+      const removeTimer = setTimeout(() => {
+        setToast(null);
+        setToastFading(false);
+      }, 5000);
+      
+      return () => {
+        clearTimeout(fadeTimer);
+        clearTimeout(removeTimer);
+      };
     }
   }, [toast]);
 
@@ -306,10 +325,15 @@ function App() {
       }, 150); // match duration-200
       return () => clearTimeout(timeout);
     }
-  }, [tabFade, pendingTab, activeTab]);
-
-  return (
-    <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-accent-1 text-white font-cascadia relative">
+  }, [tabFade, pendingTab, activeTab]);  return (
+    <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-accent-1 text-white font-cascadia" style={{ 
+      width: '360px', 
+      position: 'relative',
+      overflow: 'hidden',
+      height: '360px', // Match height from index.css
+      display: 'flex',
+      flexDirection: 'row'
+    }}>
       <ToastContainer />
       {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any */}
       {songs.length > 0 ? (
@@ -382,19 +406,14 @@ function App() {
             {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
             {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
             {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
-            {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}
-          </>
-        )}
-      </div>
-
+            {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}          </>
+        )}      </div>
       {toast && (
-        <div
-          className="fixed bottom-6 right-6 bg-green-700 text-white px-6 py-3 rounded shadow-lg z-[100]"
-          style={{ minWidth: 200, textAlign: 'center', background: 'rgba(21, 128, 61, 0.7)' }}
-          onClick={() => setToast(null)}
-        >
-          {toast}
-        </div>
+        <ToastNotification 
+          message={toast} 
+          onClose={() => setToast(null)} 
+          isFading={toastFading} 
+        />
       )}
     </div>
   )
