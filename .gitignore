@@ -1,6 +1,8 @@
 # local env files
 .env*.local
 .env
+/backend/.env.production
+/backend/requirements.txt.new
 
 # venv
 .venv/
@@ -28,3 +30,5 @@ main.spec
 
 backend/logs/
 
+
+backend/src/quota_data.json

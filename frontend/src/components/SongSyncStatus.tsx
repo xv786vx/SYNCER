@@ -4,14 +4,14 @@ import Picker from 'react-mobile-picker';
 import '../index.css';
 
 interface SongSyncStatusProps {
-  songs: SongStatus[];
-  onManualSearch: (song: SongStatus, idx: number) => Promise<void>;
-  onSkip: (song: SongStatus, idx: number) => void;
+  songs?: SongStatus[];
+  onManualSearch?: (song: SongStatus, idx: number) => Promise<void>;
+  onSkip?: (song: SongStatus, idx: number) => void;
   onFinalize: () => Promise<void>;
 }
 
 // export function SongSyncStatus({ songs, onManualSearch, onSkip, onFinalize }: SongSyncStatusProps) {
-export function SongSyncStatus({ songs, onFinalize }: SongSyncStatusProps) {
+export function SongSyncStatus({ songs = [], onFinalize }: SongSyncStatusProps) {
   // Picker expects value as an object: { columnName: value }
   const [pickerValue, setPickerValue] = useState<{ song: string }>({ song: '0' });
     return (

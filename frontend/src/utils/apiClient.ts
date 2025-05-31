@@ -20,8 +20,8 @@
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
 
 // Base URL configuration
-const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
-// const API_BASE_URL = "http://localhost:8000"; // Local backend for development
+// const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
+const API_BASE_URL = "http://localhost:8000"; // Local backend for development
 
 // Common fetch options to use for all requests
 const defaultFetchOptions: RequestInit = {
@@ -64,7 +64,9 @@ export async function syncSpToYt(playlistName: string) {
   const url = `${API_BASE_URL}/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}`;
   return withErrorHandling(async () => {
     const response = await fetchApi(url);
-    return APIErrorHandler.handleResponse(response);
+    const data = APIErrorHandler.handleResponse(response);
+    console.log("Backend response:", data); // Add this line
+    return data;
   }, "Failed to sync Spotify playlist to YouTube");
 }
 

@@ -49,6 +49,7 @@ app = FastAPI()
 session_store = {"authenticated": False}
 
 # Check if we're in CORS dev mode (more permissive settings)
+chrome_extension_id = os.getenv("CHROME_EXTENSION_ID", "default_extension_id")
 cors_dev_mode = os.environ.get("CORS_DEV_MODE", "false").lower() == "true"
 logger.info(f"CORS Dev Mode: {cors_dev_mode}")
 
@@ -57,7 +58,7 @@ if cors_dev_mode:
     logger.info("Using permissive CORS settings (development mode)")
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Allow all origins
+        allow_origins=["http://localhost:5173"],
         allow_credentials=True,
         allow_methods=["*"],  # Allow all methods
         allow_headers=["*"],  # Allow all headers
@@ -73,9 +74,8 @@ else:
             "http://localhost:5173",  # Vite dev server
             "http://localhost:3000",  # React dev server (if used)
             "http://localhost:8000",  # Backend server (for testing)
-            "chrome-extension://ogfdbkbnipljpnniofaecljifaiidefe",  # Your Chrome extension
-            "https://syncer-hwgu.onrender.com",  # Your deployed backend URL
-            "https://syncer-gt20.onrender.com",  # Previously used backend URL
+            f"chrome-extension://{chrome_extension_id}",  # Your Chrome extension
+            "https://syncer-26vh.onrender.com",  # Your deployed backend URL
         ],
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
