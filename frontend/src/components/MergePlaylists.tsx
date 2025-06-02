@@ -2,10 +2,10 @@ import { useState } from 'react';
 import { APIErrorHandler } from '../utils/errorHandling';
 
 interface MergePlaylistsProps {
-  onMerge: (ytPlaylist: string, spPlaylist: string, mergeName: string) => Promise<void>;
+  onMerge: (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => Promise<void>;
 }
 
-export function MergePlaylists({ onMerge }: MergePlaylistsProps) {
+export function MergePlaylists({ onMerge, userId }: MergePlaylistsProps & { userId: string }) {
   const [mergeYtPlaylist, setMergeYtPlaylist] = useState('');
   const [mergeSpPlaylist, setMergeSpPlaylist] = useState('');
   const [mergeName, setMergeName] = useState('');
@@ -15,7 +15,7 @@ export function MergePlaylists({ onMerge }: MergePlaylistsProps) {
       APIErrorHandler.handleError(new Error('Please enter both playlist names'));
       return;
     }
-    await onMerge(mergeYtPlaylist, mergeSpPlaylist, mergeName);
+    await onMerge(mergeYtPlaylist, mergeSpPlaylist, mergeName, userId);
     setMergeYtPlaylist('');
     setMergeSpPlaylist('');
     setMergeName('');
@@ -55,4 +55,4 @@ export function MergePlaylists({ onMerge }: MergePlaylistsProps) {
       </div>
     </div>
   );
-} 
+}

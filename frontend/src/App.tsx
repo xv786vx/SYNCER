@@ -16,6 +16,7 @@ import { SongSyncStatus } from './components/SongSyncStatus';
 import { ToastContainer } from './components/Toast';
 import { ToastNotification } from './components/ToastNotification';
 import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
+import { v4 as uuidv4 } from 'uuid';
 
 function getMsUntilMidnightEST() {
   // Get current time in UTC
@@ -39,10 +40,19 @@ function formatMs(ms: number) {
 }
 
 function App() {
+  // Persist userId in localStorage to ensure consistent user/session identity
+  const [userId] = useState(() => {
+    let stored = localStorage.getItem('userId');
+    if (!stored) {
+      stored = uuidv4();
+      localStorage.setItem('userId', stored);
+    }
+    return stored;
+  });
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("1");
-  const [displayedTab, setDisplayedTab] = useState("1"); // NEW: controls which tab's content is shown
+  const [displayedTab, setDisplayedTab] = useState("1"); // controls which tab's content is shown
   const [processes, setProcesses] = useState<Process[]>([])
   const [songs, setSongs] = useState<SongStatus[]>([])
   const [ytToSpSongs, setYtToSpSongs] = useState<SongStatus[]>([])
@@ -97,11 +107,11 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to fetch application status');
     }
   }
-  const handleSyncSpToYt = async (playlistName: string) => {
+  const handleSyncSpToYt = async (playlistName: string, userId: string) => {
     console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     try {
-      const data = await API.syncSpToYt(playlistName) as APIResponse;
+      const data = await API.syncSpToYt(playlistName, userId) as APIResponse;
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
           const song = data.songs[i];
@@ -124,10 +134,10 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
-  const handleSyncYtToSp = async (playlistName: string) => {
+  const handleSyncYtToSp = async (playlistName: string, userId: string) => {
     const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
     try {
-      const data = await API.syncYtToSp(playlistName) as APIResponse;
+      const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
           const song = data.songs[i];
@@ -150,35 +160,25 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
-  const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string) => {
+  const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
     const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
     try {
-      const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName) as APIResponse;
+      const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
       if (data.result) {
         setToast(data.result);
         updateProcess(processId, 'completed', 'Playlists merged successfully!');
         removeProcess(processId);
         fetchQuota();
       }
-    } catch (error: unknown) {
+    } catch (error) {
       updateProcess(processId, 'error', 'Failed to merge playlists');
-      // Try to extract a user-friendly error message
-      let message = "Failed to merge playlists";
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      if (error && typeof error === "object" && "error" in error && typeof (error as any).error === "object" && "message" in (error as any).error) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        message = (error as any).error.message;
-      } else if (error instanceof Error) {
-        message = error.message;
-      }
-      setToast(message);
-      APIErrorHandler.handleError(error as Error, message);
+      APIErrorHandler.handleError(error as Error, 'Failed to merge playlists');
     }
   };
-  const handleDownloadSong = async (songTitle: string, artists: string) => {
+  const handleDownloadSong = async (songTitle: string, artists: string, userId: string) => {
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
     try {
-      const data = await API.downloadYtSong(songTitle, artists) as APIResponse;
+      const data = await API.downloadYtSong(songTitle, artists, userId) as APIResponse;
       if (data.result) {
         setToast(data.result);
         updateProcess(processId, 'completed', 'Download completed successfully!');
@@ -191,7 +191,7 @@ function App() {
     }
   };
   const handleManualSearch = async (song: SongStatus, idx: number) => {
-    const data = await API.manualSearchSpToYt(song.name, song.artist) as { status: string; yt_id?: string };
+    const data = await API.manualSearchSpToYt(song.name, song.artist, userId) as { status: string; yt_id?: string };
     setSongs(prev =>
       prev.map((s, i) =>
         i === idx
@@ -215,15 +215,14 @@ function App() {
 
   const handleFinalize = async () => {
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
-    const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds) as { message?: string };
+    const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId) as { message?: string };
     setToast(data.message || 'Sync complete!');
     setSongs([]);
     setSyncedSpPlaylist('');
   };
 
   const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
-    // Using type assertion to APIResponse to avoid TypeScript error
-    const data = await API.manualSearchYtToSp(song.name, song.artist) as { status: string; sp_id?: string };
+    const data = await API.manualSearchYtToSp(song.name, song.artist, userId) as { status: string; sp_id?: string };
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
         i === idx
@@ -247,7 +246,7 @@ function App() {
 
   const handleFinalizeYtToSp = async () => {
     const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
-    const data = await API.finalizeYtToSp(syncedYtPlaylist, spIds) as { message?: string };
+    const data = await API.finalizeYtToSp(syncedYtPlaylist, spIds, userId) as { message?: string };
     setToast(data.message || 'Sync complete!');
     setYtToSpSongs([]);
     setSyncedYtPlaylist('');
@@ -403,10 +402,10 @@ function App() {
           </div>
         ) : (
           <>
-            {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} />}
-            {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} />}
-            {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} />}
-            {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} />}          </>
+            {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId} />}
+            {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId} />}
+            {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId} />}
+            {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId} />}          </>
         )}      </div>
       {toast && (
         <ToastNotification 

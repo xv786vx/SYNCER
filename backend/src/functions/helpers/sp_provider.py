@@ -13,18 +13,20 @@ sp_client_id = os.getenv("SP_CLIENT_ID")
 sp_client_secret = os.getenv("SP_CLIENT_SECRET")
 
 class SpotifyProvider(Provider):
-    def __init__(self):
+    def __init__(self, user_id: str):
+        self.user_id = user_id
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         token_dir = os.path.join(root_dir, 'auth_tokens')
         os.makedirs(token_dir, exist_ok=True) # Ensure the directory exists
-        
-        self.cache_path = os.path.join(token_dir, '.cache')
+
+        # Use user_id to create a unique cache path for each user
+        self.cache_path = os.path.join(token_dir, f'.cache_{user_id}')
         self.client_id = sp_client_id
         self.client_secret = sp_client_secret
-        
+
         # Check if we're running on Render or locally
         is_render = os.environ.get("RENDER", "false").lower() == "true"
-        
+
         if is_render:
             # If deployed, use the deployed URL (add this environment variable on Render)
             self.redirect_uri = os.environ.get("SPOTIFY_REDIRECT_URI", "https://syncer-hwgu.onrender.com/callback")
@@ -33,13 +35,13 @@ class SpotifyProvider(Provider):
             # Locally, use localhost
             self.redirect_uri = "http://localhost:3000/callback"
             print(f"Running in local mode, using redirect URI: {self.redirect_uri}")
-            
+
         self.scope = "playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative"
 
         # DEBUG: Only delete cache in local dev environment
-        if not is_render and os.path.exists(self.cache_path):
-            print("Deleting existing Spotify cache file to force re-authentication...")
-            os.remove(self.cache_path)
+        # if not is_render and os.path.exists(self.cache_path):
+        #     print("Deleting existing Spotify cache file to force re-authentication...")
+        #     os.remove(self.cache_path)
 
         self.sp = self.init_spotify_client() # Store the client instance
 
@@ -61,14 +63,12 @@ class SpotifyProvider(Provider):
         auth_manager = self.get_auth_manager()
         try:
             # Try to get a token; this might involve user interaction or cache usage
-            # The get_access_token method handles refresh internally if needed and possible
             token_info = auth_manager.get_access_token(check_cache=True)
             if not token_info:
-                 print("Could not get Spotify token. Manual authorization likely required.")
-                 # Attempting to get token again might trigger the browser flow
-                 token_info = auth_manager.get_access_token(check_cache=False)
-                 if not token_info:
-                      raise SpotifyOauthError("Failed to obtain Spotify token after prompt.")
+                print("Could not get Spotify token. Manual authorization likely required.")
+                token_info = auth_manager.get_access_token(check_cache=False)
+                if not token_info:
+                    raise SpotifyOauthError("Failed to obtain Spotify token after prompt.")
 
             print("Spotify token obtained successfully.")
             sp_client = spotipy.Spotify(auth_manager=auth_manager)
@@ -79,22 +79,8 @@ class SpotifyProvider(Provider):
             return sp_client
 
         except SpotifyOauthError as e:
-            print(f"Spotify Authorization Error during initialization: {e}")
-            # Specifically check for invalid_grant which indicates a bad refresh token
-            if 'invalid_grant' in str(e).lower() or 'invalid_client' in str(e).lower():
-                print("Invalid grant or client error detected. Deleting cache and forcing re-authorization.")
-                if os.path.exists(self.cache_path):
-                    os.remove(self.cache_path)
-                # Re-attempt getting the auth manager and token, forcing user interaction
-                auth_manager = self.get_auth_manager()
-                token_info = auth_manager.get_access_token(check_cache=False) # Force prompt
-                if not token_info:
-                     raise SpotifyOauthError(f"Failed to obtain Spotify token even after re-authorization attempt: {e}")
-                print("Re-authorization successful after deleting cache.")
-                return spotipy.Spotify(auth_manager=auth_manager)
-            else:
-                # Raise other Spotify OAuth errors
-                raise
+            print(f"Spotify OAuth error: {e}")
+            raise
         except Exception as e:
              print(f"An unexpected error occurred during Spotify initialization: {e}")
              raise # Re-raise unexpected errors

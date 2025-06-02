@@ -239,12 +239,12 @@ def api_sync_yt_to_sp(playlist_name: str):
         raise APIError(f"Failed to sync playlist: {str(e)}")
 
 @app.post("/api/finalize_yt_to_sp")
-def finalize_yt_to_sp(playlist_name: str = Body(...), sp_ids: list = Body(...)):
-    if not playlist_name or not sp_ids:
-        raise ValidationError("Playlist name and song IDs are required")
+def finalize_yt_to_sp(playlist_name: str = Body(...), sp_ids: list = Body(...), user_id: str = Body(...)):
+    if not playlist_name or not sp_ids or not user_id:
+        raise ValidationError("Playlist name, song IDs, and user_id are required")
     
     try:
-        sp = SpotifyProvider()
+        sp = SpotifyProvider(user_id)
         pl_info = sp.get_playlist_by_name(playlist_name)
         if pl_info is None:
             pl_info = sp.create_playlist(playlist_name)
@@ -256,12 +256,13 @@ def finalize_yt_to_sp(playlist_name: str = Body(...), sp_ids: list = Body(...)):
         raise APIError(f"Failed to finalize sync: {str(e)}")
 
 @app.get("/api/sync_sp_to_yt")
-def api_sync_sp_to_yt(playlist_name: str):
+def api_sync_sp_to_yt(playlist_name: str, user_id: str):
     if not playlist_name:
         raise ValidationError("Playlist name is required")
-    
+
     try:
-        results = sync_sp_to_yt(playlist_name)
+        sp = SpotifyProvider(user_id)  # Pass user_id to SpotifyProvider
+        results = sync_sp_to_yt(playlist_name, sp)
         if not results:
             raise ResourceNotFoundError(f"No songs found in playlist: {playlist_name}")
         return {
@@ -273,12 +274,12 @@ def api_sync_sp_to_yt(playlist_name: str):
         raise APIError(f"Failed to sync playlist: {str(e)}")
 
 @app.post("/api/finalize_sp_to_yt")
-def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...)):
-    if not playlist_name or not yt_ids:
-        raise ValidationError("Playlist name and song IDs are required")
+def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), user_id: str = Body(...)):
+    if not playlist_name or not yt_ids or not user_id:
+        raise ValidationError("Playlist name, song IDs, and user_id are required")
     
     try:
-        yt = YoutubeProvider()
+        yt = YoutubeProvider(user_id)
         pl_info = yt.get_playlist_by_name(playlist_name)
         if pl_info is None:
             pl_info = yt.create_playlist(playlist_name)
@@ -290,12 +291,12 @@ def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...)):
         raise APIError(f"Failed to finalize sync: {str(e)}")
 
 @app.get("/api/merge_playlists")
-def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str):
-    if not yt_playlist or not sp_playlist:
-        raise ValidationError("Both playlist names are required")
+def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str, user_id: str):
+    if not yt_playlist or not sp_playlist or not user_id:
+        raise ValidationError("Both playlist names and user_id are required")
     
     try:
-        result = merge_playlists(yt_playlist, sp_playlist, merge_name)
+        result = merge_playlists(yt_playlist, sp_playlist, merge_name, user_id)
         return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"Error merging playlists: {str(e)}")
@@ -304,24 +305,23 @@ def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str):
         raise APIError(f"Failed to merge playlists: {str(e)}")
 
 @app.get("/api/download_yt_song")
-def api_download_yt_song(song_name: str, artists: str):
-    if not song_name or not artists:
-        raise ValidationError("Song name and artists are required")
+def api_download_yt_song(song_name: str, artists: str, user_id: str):
+    if not song_name or not artists or not user_id:
+        raise ValidationError("Song name, artists, and user_id are required")
     
     try:
-        result = download_yt_song(song_name, artists)
+        result = download_yt_song(song_name, artists, user_id)
         return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"Error downloading YouTube song: {str(e)}")
         raise APIError(f"Failed to download song: {str(e)}")
 
 @app.get("/api/manual_search_sp_to_yt")
-def manual_search_sp_to_yt(song: str, artist: str):
-    if not song or not artist:
-        raise ValidationError("Song name and artist are required")
-    
+def manual_search_sp_to_yt(song: str, artist: str, user_id: str):
+    if not song or not artist or not user_id:
+        raise ValidationError("Song name, artist, and user_id are required")
     try:
-        yt = YoutubeProvider()
+        yt = YoutubeProvider(user_id)
         result = yt.search_manual(song, artist)
         if result:
             return {"status": "found", "yt_id": result}
@@ -332,12 +332,11 @@ def manual_search_sp_to_yt(song: str, artist: str):
         raise APIError(f"Failed to perform manual search: {str(e)}")
 
 @app.get("/api/manual_search_yt_to_sp")
-def manual_search_yt_to_sp(song: str, artist: str):
-    if not song or not artist:
-        raise ValidationError("Song name and artist are required")
-    
+def manual_search_yt_to_sp(song: str, artist: str, user_id: str):
+    if not song or not artist or not user_id:
+        raise ValidationError("Song name, artist, and user_id are required")
     try:
-        sp = SpotifyProvider()
+        sp = SpotifyProvider(user_id)
         result = sp.search_manual(song, artist)
         if result:
             return {"status": "found", "sp_id": result}

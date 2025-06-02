@@ -1,8 +1,8 @@
 from src.functions.helpers.yt_provider import YoutubeProvider
 
-def download_yt_song(song_name, artists):
+def download_yt_song(song_name, artists, user_id):
     print("Downloading YouTube song...")
-    yt = YoutubeProvider()
+    yt = YoutubeProvider(user_id)
     video_id = yt.search_manual(song_name, artists)
     if video_id:
         yt.download_song(video_id)

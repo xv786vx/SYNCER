@@ -3,10 +3,11 @@ import { FaSpotify } from 'react-icons/fa';
 import { APIErrorHandler } from '../utils/errorHandling';
 
 interface SyncYtToSpProps {
-  onSync: (playlistName: string) => Promise<void>;
+  onSync: (playlistName: string, userId: string) => Promise<void>;
+  userId: string;
 }
 
-export function SyncYtToSp({ onSync }: SyncYtToSpProps) {
+export function SyncYtToSp({ onSync, userId }: SyncYtToSpProps) {
   const [ytPlaylist, setYtPlaylist] = useState('');
 
   const handleSync = async () => {
@@ -14,7 +15,7 @@ export function SyncYtToSp({ onSync }: SyncYtToSpProps) {
       APIErrorHandler.handleError(new Error('Please enter a playlist name'));
       return;
     }
-    await onSync(ytPlaylist);
+    await onSync(ytPlaylist, userId);
     setYtPlaylist('');
   };
 
@@ -26,7 +27,7 @@ export function SyncYtToSp({ onSync }: SyncYtToSpProps) {
           type="text"
           value={ytPlaylist}
           onChange={(e) => setYtPlaylist(e.target.value)}
-          placeholder="..."
+          placeholder="Playlist Name..."
           className="bg-transparent border-0 border-b-2 border-brand-red-dark focus:border-brand-red focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
         />
         <button
@@ -38,4 +39,4 @@ export function SyncYtToSp({ onSync }: SyncYtToSpProps) {
       </div>
     </div>
   );
-} 
+}

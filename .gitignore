@@ -15,6 +15,7 @@ env/
 # token file for YouTube API credentials
 **/token.json
 **/desktop_client_secrets.json
+backend/src/auth_tokens/
 
 # spotify .cache that contains token 
 *.cache

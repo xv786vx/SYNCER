@@ -5,6 +5,8 @@ from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 import yt_dlp
 from youtubesearchpython import VideosSearch
+import json
+import uuid  # Import the uuid module
 
 from .provider import Provider
 from .provider import preprocess_title, fuzzy_match
@@ -25,28 +27,28 @@ yt_client_secret = os.getenv("YT_CLIENT_SECRET")
 yt_redirect_uri = os.getenv("YT_REDIRECT_URIS")
 
 class YoutubeProvider(Provider):
-    def __init__(self):
-        scopes =   ['https://www.googleapis.com/auth/youtube.readonly',
-                    'https://www.googleapis.com/auth/youtube']
-        
-        # Check if we're running on Render or locally
-        is_render = os.environ.get("RENDER", "false").lower() == "true"
+    # In-memory token storage
+    token_store = {}
 
-        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        token_dir = os.path.join(root_dir, 'auth_tokens')
+    def __init__(self, user_id):
+        if not user_id:
+            raise ValueError("YoutubeProvider requires a user_id for token management!")
+        self.user_id = user_id
+        print(f"[YTProvider] Using user_id: {self.user_id}")
+        scopes = ['https://www.googleapis.com/auth/youtube.readonly',
+                  'https://www.googleapis.com/auth/youtube']
+
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
+        token_dir = os.path.join(root_dir, 'src', 'auth_tokens')
         os.makedirs(token_dir, exist_ok=True)
-        TOKEN_FILE = os.path.join(token_dir, 'token.json')
         CLIENT_SECRETS_FILE = os.path.join(token_dir, 'desktop_client_secrets.json')
+        self.token_file = os.path.join(token_dir, f"{self.user_id}-yttoken.json")
+        print(f"[YTProvider] Token file: {self.token_file}")
 
         # Create client_secrets JSON if it doesn't exist
-        if not os.path.exists(CLIENT_SECRETS_FILE) or is_render:
+        if not os.path.exists(CLIENT_SECRETS_FILE):
             print("Creating client_secrets.json file from environment variables...")
-              # Determine the appropriate redirect URIs based on environment
             redirect_uris = yt_redirect_uri.split(',')
-            
-            # Keep all URIs - we need both localhost and deployed URIs for flexibility
-            print(f"Using redirect URIs: {redirect_uris}")
-            
             with open(CLIENT_SECRETS_FILE, 'w') as f:
                 f.write(f'''{{
                     "web": {{
@@ -60,44 +62,21 @@ class YoutubeProvider(Provider):
                     }}
                 }}''')
 
-        credentials = None
-        
-        # load credentials from token file if it exists
-        if os.path.exists(TOKEN_FILE):
-            try:
-                print("Found existing token, attempting to use it...")
-                credentials = Credentials.from_authorized_user_file(TOKEN_FILE, scopes=scopes)
-                # Try refreshing ONLY if expired
-                if credentials and credentials.expired and credentials.refresh_token:
-                    try:
-                        print("Refreshing expired token...")
-                        credentials.refresh(Request())
-                        print("Successfully refreshed existing token.")
-                        # Save the refreshed credentials
-                        with open(TOKEN_FILE, "w") as token_file:
-                            token_file.write(credentials.to_json())
-                    except RefreshError as e:
-                        print(f"Error refreshing token: {str(e)}. Will need to reauthorize.")
-                        credentials = None
-                        if os.path.exists(TOKEN_FILE):
-                            os.remove(TOKEN_FILE)
-                    except Exception as e:
-                        print(f"Unexpected error refreshing token: {str(e)}. Will try to reauthorize.")
-                        credentials = None
-            except Exception as e:
-                print(f"Error loading credentials: {str(e)}. Will need to reauthorize.")
-                credentials = None
-                if os.path.exists(TOKEN_FILE):
-                    os.remove(TOKEN_FILE)
-        # --- End of token loading ---
+        credentials = self.load_credentials_from_memory()
 
-        # Start new auth flow if needed
+        if credentials and credentials.expired and credentials.refresh_token:
+            try:
+                print("Refreshing expired YouTube token...")
+                credentials.refresh(Request())
+                self.save_credentials_to_memory(credentials)
+                print("Token refreshed successfully.")
+            except RefreshError as e:
+                print(f"Failed to refresh token: {e}")
+                credentials = None
+
         if not credentials or not credentials.valid:
             print("Starting new YouTube authentication flow using client secrets file...")
             try:
-                if not os.path.exists(CLIENT_SECRETS_FILE):
-                     raise FileNotFoundError(f"Client secrets file not found at {CLIENT_SECRETS_FILE}.")
-
                 flow = InstalledAppFlow.from_client_secrets_file(
                     CLIENT_SECRETS_FILE,
                     scopes=scopes
@@ -109,29 +88,40 @@ class YoutubeProvider(Provider):
                     prompt='consent'
                 )
 
-                # --- REMOVED Immediate Refresh Check ---
-
-                # Save the new credentials
-                with open(TOKEN_FILE, "w") as token_file:
-                    token_file.write(credentials.to_json())
+                self.save_credentials_to_memory(credentials)
                 print("New authentication successful! Token saved.")
 
             except Exception as e:
                 print(f"Authentication failed: {e}")
                 raise
 
-        # Build the YouTube API client ONCE
         try:
             self.youtube = build('youtube', 'v3', credentials=credentials)
-            # --- REMOVED ALL API TESTS FROM __init__ ---
             print("YouTube API client built successfully.")
         except Exception as e:
-            error_details = f"Error: {e}"
-            if hasattr(e, 'resp') and hasattr(e.resp, 'status'):
-                 error_details = f"Status: {e.resp.status}, Reason: {e.resp.reason}, Content: {e.content}"
-            print(f"Error building YouTube API client: {error_details}")
+            print(f"Error building YouTube API client: {e}")
             raise
 
+    def load_credentials_from_memory(self):
+        """Load credentials from a user-specific file in the 'src/auth_tokens' folder."""
+        if os.path.exists(self.token_file):
+            try:
+                with open(self.token_file, 'r') as f:
+                    token_data = json.load(f)
+                return Credentials.from_authorized_user_info(token_data)
+            except Exception as e:
+                print(f"Failed to load credentials from file: {e}")
+        return None
+
+    def save_credentials_to_memory(self, credentials):
+        """Save credentials to a user-specific file in the 'src/auth_tokens' folder."""
+        os.makedirs(os.path.dirname(self.token_file), exist_ok=True)
+        try:
+            with open(self.token_file, 'w') as f:
+                json.dump(json.loads(credentials.to_json()), f)
+            print(f"Credentials saved to {self.token_file}")
+        except Exception as e:
+            print(f"Failed to save credentials to file: {e}")
 
     def search_auto(self, track_name, artists) -> list:
         """algorithmically processes track_name and artists from Spotify to search for equivalent Youtube video."""

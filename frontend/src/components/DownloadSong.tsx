@@ -3,10 +3,10 @@ import { SiYoutube } from 'react-icons/si';
 import { APIErrorHandler } from '../utils/errorHandling';
 
 interface DownloadSongProps {
-  onDownload: (songTitle: string, artistNames: string) => Promise<void>;
+  onDownload: (songTitle: string, artistNames: string, userId: string) => Promise<void>;
 }
 
-export function DownloadSong({ onDownload }: DownloadSongProps) {
+export function DownloadSong({ onDownload, userId }: DownloadSongProps & { userId: string }) {
   const [songTitle, setSongTitle] = useState('');
   const [artistName, setArtistName] = useState('');
 
@@ -15,7 +15,7 @@ export function DownloadSong({ onDownload }: DownloadSongProps) {
       APIErrorHandler.handleError(new Error('Please enter a song title'));
       return;
     }
-    await onDownload(songTitle, artistName);
+    await onDownload(songTitle, artistName, userId);
     setSongTitle('');
     setArtistName('');
   };
@@ -47,4 +47,4 @@ export function DownloadSong({ onDownload }: DownloadSongProps) {
       </div>
     </div>
   );
-} 
+}

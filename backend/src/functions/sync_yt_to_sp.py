@@ -2,9 +2,9 @@ from src.functions.helpers.sp_provider import SpotifyProvider
 from src.functions.helpers.yt_provider import YoutubeProvider
 
 
-def sync_yt_to_sp(playlist_to_modify):
-    yt = YoutubeProvider()
-    sp = SpotifyProvider()
+def sync_yt_to_sp(playlist_to_modify, user_id=None):
+    yt = YoutubeProvider(user_id)
+    sp = SpotifyProvider(user_id)
 
 
     pl_info = yt.get_playlist_by_name(playlist_to_modify)

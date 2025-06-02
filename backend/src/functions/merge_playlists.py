@@ -2,9 +2,9 @@ from src.functions.helpers.sp_provider import SpotifyProvider
 from src.functions.helpers.yt_provider import YoutubeProvider
 import time
 
-def merge_playlists(yt_name, sp_name, merge_name):
-    yt = YoutubeProvider()
-    sp = SpotifyProvider()
+def merge_playlists(yt_name, sp_name, merge_name, user_id):
+    yt = YoutubeProvider(user_id)
+    sp = SpotifyProvider(user_id)
 
     ytp = yt.get_playlist_by_name(yt_name)
     spp = sp.get_playlist_by_name(sp_name)
