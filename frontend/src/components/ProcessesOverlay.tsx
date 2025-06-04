@@ -1,4 +1,5 @@
 import { Process } from '../types';
+import { LoadingSpinner } from './LoadingSpinner';
 
 interface ProcessesOverlayProps {
   processes: Process[];
@@ -6,7 +7,8 @@ interface ProcessesOverlayProps {
 }
 
 export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps) {
-  return (    <div
+  return (
+    <div
       className="absolute z-50 bg-black bg-opacity-75"
       onClick={onDismiss}
       style={{ 
@@ -39,8 +41,10 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
             >
               <div className="flex flex-col items-center justify-center">
                 <span className="font-medium text-center">{process.message}</span>
-                {process.status === 'in-progress' && !process.interactive && (
-                  <div className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mt-2"></div>
+                {process.status === 'in-progress' && (
+                  <div className="mt-3 mb-1 flex flex-col items-center">
+                    <LoadingSpinner size={48} color="#fff" />
+                  </div>
                 )}
               </div>
             </div>

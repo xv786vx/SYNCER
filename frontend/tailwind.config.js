@@ -4,8 +4,8 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          dark: "#181819",
-          "accent-1": "#202022",
+          dark: "#000000",
+          "accent-1": "#181819",
           "accent-2": "#313134",
           "accent-3": "#494A4F",
           "gray-1": "#D5D5DA",

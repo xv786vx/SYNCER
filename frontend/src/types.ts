@@ -18,6 +18,7 @@ export interface Process {
     onSearch: () => void;
     onSkip: () => void;
   };
+  progress?: number; // 0-100, for progress bar
 }
 
 export interface APIResponse {

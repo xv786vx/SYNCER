@@ -18,6 +18,8 @@ import { ToastNotification } from './components/ToastNotification';
 import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
 import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion'
+// @ts-expect-error lazy workaround for "any" type dither component
+import Dither from "./components/Backgrounds/Dither/Dither";
 
 function getMsUntilMidnightEST() {
   // Get current time in UTC
@@ -112,6 +114,7 @@ function App() {
   const handleSyncSpToYt = async (playlistName: string, userId: string) => {
     console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
+    updateProcess(processId, 'in-progress', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     try {
       const data = await API.syncSpToYt(playlistName, userId) as APIResponse;
       if (data.songs) {
@@ -361,46 +364,59 @@ function App() {
       )}
 
       {/* Sidebar */}
-      <div className="flex flex-col flex-shrink-0 w-[144px] bg-brand-accent-1 gap-y-2 p-3">
-        <h1 className="text-white text-center text-2xl font-cascadia font-bold">syncer</h1>
-        <p className="text-white text-center text-xs font-cascadia my-2">
-          <SiYoutube className="inline-block mr-2 my-1" />
-          API usage: {quota ? `${quota.total} / ${quota.limit}` : '...'} units
-        </p>
-        {tabs.map(tab => (
-          <motion.button
-            key={tab.id}
-            className={`w-full h-10 px-2 py-3 rounded text-xs flex items-center justify-center font-cascadia font-light relative z-10 ${
-              activeTab === tab.id
-                ? "bg-brand-gray-1 text-brand-dark"
-                : "bg-brand-accent-1 text-brand-gray-2 hover:bg-brand-accent-2"
-            }`}
-            onClick={() => handleTabChange(tab.id)}
-            disabled={!!(quota && quota.total >= quota.limit)}
-            initial={false}
-            whileTap={{ scale: 0.8, transition: { type: "spring", stiffness: 400, damping: 20 } }}
-            transition={{ type: "spring", stiffness: 400, damping: 30 }}
-          >
-            {tab.id === "1" || tab.id === "2" ? (
-              <>
-                {tab.label}
-                {tab.id === "1" ? (
-                  <FaSpotify className={`inline-block mx-1 align-middle relative ${activeTab === "1" ? "text-green-500" : "text-brand-gray-2"}`} />
-                ) : (
-                  <SiYoutube className={`inline-block mx-1 align-middle relative ${activeTab === "2" ? "text-red-500" : "text-brand-gray-2"}`} />
-                )}
-                <span className="mx-1 text-lg align-middle relative -top-0.5">→</span>
-                {tab.id === "1" ? (
-                  <SiYoutube className={`inline-block mx-1 align-middle relative ${activeTab === "1" ? "text-red-500" : "text-brand-gray-2"}`} />
-                ) : (
-                  <FaSpotify className={`inline-block mx-1 align-middle relative ${activeTab === "2" ? "text-green-500" : "text-brand-gray-2"}`} />
-                )}
-              </>
-            ) : (
-              tab.label
-            )}
-          </motion.button>
-        ))}
+      <div className="relative flex flex-col flex-shrink-0 w-[144px] gap-y-2 p-3 overflow-hidden">
+        <Dither
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            zIndex: 0,
+            pointerEvents: "none"
+          }}
+          // Add your Dither props here if needed
+        />
+        <div className="relative z-10">
+          <h1 className="text-white text-center text-2xl font-cascadia font-bold">syncer</h1>
+          <p className="text-white text-center text-xs font-cascadia my-2">
+            <SiYoutube className="inline-block mr-2 my-1" />
+            API usage: {quota ? `${quota.total} / ${quota.limit}` : '...'} units
+          </p>
+          {tabs.map(tab => (
+            <motion.button
+              key={tab.id}
+              className={`w-full h-10 px-2 py-3 rounded text-xs flex items-center justify-center font-cascadia font-light relative z-10 ${
+                activeTab === tab.id
+                  ? "bg-brand-gray-1 text-brand-dark"
+                  : "bg-brand-accent-1 text-brand-gray-2 hover:bg-brand-accent-2"
+              }`}
+              onClick={() => handleTabChange(tab.id)}
+              disabled={!!(quota && quota.total >= quota.limit)}
+              initial={false}
+              whileTap={{ scale: 0.8, transition: { type: "spring", stiffness: 400, damping: 20 } }}
+              transition={{ type: "spring", stiffness: 400, damping: 30 }}
+            >
+              {tab.id === "1" || tab.id === "2" ? (
+                <>
+                  {tab.label}
+                  {tab.id === "1" ? (
+                    <FaSpotify className={`inline-block mx-1 align-middle relative ${activeTab === "1" ? "text-green-500" : "text-brand-gray-2"}`} />
+                  ) : (
+                    <SiYoutube className={`inline-block mx-1 align-middle relative ${activeTab === "2" ? "text-red-500" : "text-brand-gray-2"}`} />
+                  )}
+                  <span className="mx-1 text-lg align-middle relative -top-0.5">→</span>
+                  {tab.id === "1" ? (
+                    <SiYoutube className={`inline-block mx-1 align-middle relative ${activeTab === "1" ? "text-red-500" : "text-brand-gray-2"}`} />
+                  ) : (
+                    <FaSpotify className={`inline-block mx-1 align-middle relative ${activeTab === "2" ? "text-green-500" : "text-brand-gray-2"}`} />
+                  )}
+                </>
+              ) : (
+                tab.label
+              )}
+            </motion.button>
+          ))}
+        </div>
       </div>
 
       {/* Main Content with motion enter animation */}

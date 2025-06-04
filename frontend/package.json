@@ -10,12 +10,17 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@react-three/fiber": "^9.1.2",
+    "@react-three/postprocessing": "^3.0.4",
     "axios": "^1.9.0",
+    "postprocessing": "^6.37.3",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-icons": "^5.5.0",
     "react-mobile-picker": "^1.1.2",
-    "react-toastify": "^10.0.6"
+    "react-toastify": "^10.0.6",
+    "three": "^0.176.0",
+    "uuid": "^11.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.22.0",
