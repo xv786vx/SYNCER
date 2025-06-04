@@ -20,8 +20,8 @@
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
 
 // Base URL configuration
-// const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
-const API_BASE_URL = "http://localhost:8000"; // Local backend for development
+const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
+// const API_BASE_URL = "http://localhost:8000"; // Local backend for development
 
 // Common fetch options to use for all requests
 const defaultFetchOptions: RequestInit = {

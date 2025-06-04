@@ -4,10 +4,12 @@ module.exports = {
     extend: {
       colors: {
         brand: {
-          dark: "#17151D",
-          "accent-1": "#1B1E2A",
-          "accent-2": "#24273F",
-          "accent-3": "#2E334E",
+          dark: "#181819",
+          "accent-1": "#202022",
+          "accent-2": "#313134",
+          "accent-3": "#494A4F",
+          "gray-1": "#D5D5DA",
+          "gray-2": "#C2C1C0",
           green: "#1DB954",
           "green-dark": "#019836",
           red: "#FF0000",

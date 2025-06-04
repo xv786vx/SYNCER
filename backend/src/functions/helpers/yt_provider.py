@@ -278,7 +278,7 @@ class YoutubeProvider(Provider):
             print("Attempting to execute self.youtube.playlists().list...")
             request = self.youtube.playlists().list(part="snippet", mine=True, maxResults=50) # Added maxResults
 
-            increment_quota('playlists.list')
+            increment_quota("playlists.list")  # playlists.list costs 1 unit
 
             response = request.execute()
             print(f"Successfully executed playlists().list. Found {len(response.get('items', []))} items.")
@@ -338,7 +338,7 @@ class YoutubeProvider(Provider):
         while request:
             response = request.execute()
 
-            increment_quota("playlistItems.list")
+            increment_quota("playlistItems.list")  # playlistItems.list costs 1 unit
             
             # Add the current batch of items to the playlist_items list
             playlist_items.extend([

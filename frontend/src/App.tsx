@@ -17,6 +17,7 @@ import { ToastContainer } from './components/Toast';
 import { ToastNotification } from './components/ToastNotification';
 import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
 import { v4 as uuidv4 } from 'uuid';
+import { motion, AnimatePresence } from 'framer-motion'
 
 function getMsUntilMidnightEST() {
   // Get current time in UTC
@@ -74,6 +75,7 @@ function App() {
   const fetchQuota = async () => {
       try {
         const data = await API.getYoutubeQuota() as { total: number; limit: number };
+        console.log('[DEBUG] Quota API response:', data);
         setQuota({ total: data.total, limit: data.limit });
       } catch {
         setQuota(null);
@@ -303,7 +305,7 @@ function App() {
     { id: "1", label: "sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
     { id: "2", label: "sync", icon1: <SiYoutube className="inline-block mx-1" />, icon2: <FaSpotify className="inline-block mx-1" /> },
     { id: "3", label: "merge playlists" },
-    // { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" }, // uncomment when you want to add download functionality
+    // { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
   ];
 
   // Fade out, then switch tab, then fade in
@@ -325,7 +327,7 @@ function App() {
       return () => clearTimeout(timeout);
     }
   }, [tabFade, pendingTab, activeTab]);  return (
-    <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-accent-1 text-white font-cascadia" style={{ 
+    <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-dark text-white font-cascadia" style={{ 
       width: '360px', 
       position: 'relative',
       overflow: 'hidden',
@@ -359,54 +361,77 @@ function App() {
       )}
 
       {/* Sidebar */}
-      <div className="flex flex-col flex-shrink-0 w-[144px] bg-brand-dark gap-y-2 p-3">
-        <h1 className="text-white text-center text-2xl font-bold font-cascadia">syncer</h1>
+      <div className="flex flex-col flex-shrink-0 w-[144px] bg-brand-accent-1 gap-y-2 p-3">
+        <h1 className="text-white text-center text-2xl font-cascadia font-bold">syncer</h1>
         <p className="text-white text-center text-xs font-cascadia my-2">
           <SiYoutube className="inline-block mr-2 my-1" />
           API usage: {quota ? `${quota.total} / ${quota.limit}` : '...'} units
         </p>
         {tabs.map(tab => (
-          <button
+          <motion.button
             key={tab.id}
-            className={`px-2 py-3 rounded text-xs flex items-center justify-center font-cascadia ${
+            className={`w-full h-10 px-2 py-3 rounded text-xs flex items-center justify-center font-cascadia font-light relative z-10 ${
               activeTab === tab.id
-                ? "bg-brand-accent-3 text-white"
-                : "bg-brand-accent-1 text-white hover:bg-brand-accent-2"
+                ? "bg-brand-gray-1 text-brand-dark"
+                : "bg-brand-accent-1 text-brand-gray-2 hover:bg-brand-accent-2"
             }`}
             onClick={() => handleTabChange(tab.id)}
             disabled={!!(quota && quota.total >= quota.limit)}
+            initial={false}
+            whileTap={{ scale: 0.8, transition: { type: "spring", stiffness: 400, damping: 20 } }}
+            transition={{ type: "spring", stiffness: 400, damping: 30 }}
           >
             {tab.id === "1" || tab.id === "2" ? (
               <>
-                {tab.label} {tab.icon1} to {tab.icon2}
+                {tab.label}
+                {tab.id === "1" ? (
+                  <FaSpotify className={`inline-block mx-1 align-middle relative ${activeTab === "1" ? "text-green-500" : "text-brand-gray-2"}`} />
+                ) : (
+                  <SiYoutube className={`inline-block mx-1 align-middle relative ${activeTab === "2" ? "text-red-500" : "text-brand-gray-2"}`} />
+                )}
+                <span className="mx-1 text-lg align-middle relative -top-0.5">→</span>
+                {tab.id === "1" ? (
+                  <SiYoutube className={`inline-block mx-1 align-middle relative ${activeTab === "1" ? "text-red-500" : "text-brand-gray-2"}`} />
+                ) : (
+                  <FaSpotify className={`inline-block mx-1 align-middle relative ${activeTab === "2" ? "text-green-500" : "text-brand-gray-2"}`} />
+                )}
               </>
             ) : (
               tab.label
             )}
-          </button>
+          </motion.button>
         ))}
       </div>
 
-      {/* Main Content with fade-in transition */}
-      <div
-        className={`w-[216px] p-6 transition-opacity duration-200 ${tabFade ? 'opacity-100' : 'opacity-0'}`}
-        style={{ pointerEvents: tabFade ? 'auto' : 'none' }}
-      >
-        {quotaExceeded ? (
-          <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="text-3xl font-bold mb-2">yabba dabba doo!</div>
-            <div className="text-lg mb-4">YouTube API quota exhausted</div>
-            <div className="text-sm mb-2">Quota resets in:</div>
-            <div className="text-2xl font-mono mb-4">{formatMs(countdown)}</div>
-            <div className="text-xs text-neutral-400">Try again after midnight EST</div>
-          </div>
-        ) : (
-          <>
-            {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId} />}
-            {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId} />}
-            {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId} />}
-            {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId} />}          </>
-        )}      </div>
+      {/* Main Content with motion enter animation */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={displayedTab + String(quotaExceeded)}
+          initial={{ opacity: 0, y: 24, scale: 0.98 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: -24, scale: 0.98 }}
+          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+          className="w-[216px] p-6"
+          style={{ pointerEvents: quotaExceeded ? 'none' : 'auto' }}
+        >
+          {quotaExceeded ? (
+            <div className="flex flex-col items-center justify-center h-full text-center">
+              <div className="text-3xl font-bold mb-2">yabba dabba doo!</div>
+              <div className="text-lg mb-4">YouTube API quota exhausted</div>
+              <div className="text-sm mb-2">Quota resets in:</div>
+              <div className="text-2xl font-mono mb-4">{formatMs(countdown)}</div>
+              <div className="text-xs text-neutral-400">Try again after midnight EST</div>
+            </div>
+          ) : (
+            <>
+              {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId} />}
+              {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId} />}
+              {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId} />}
+              {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId} />}
+            </>
+          )}
+        </motion.div>
+      </AnimatePresence>
       {toast && (
         <ToastNotification 
           message={toast} 

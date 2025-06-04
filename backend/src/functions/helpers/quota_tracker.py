@@ -1,6 +1,8 @@
 import os
 import json
 import logging
+import pytz
+from datetime import datetime
 
 """
 YouTube API Quota Tracking System
@@ -53,22 +55,51 @@ YT_API_QUOTA_COSTS = {
     "videos.insert": 1600,
 }
 
-# Initialize with zeros
 default_quota_usage = {x: 0 for x in YT_API_QUOTA_COSTS.keys()}
 
-# Load quota data from file if it exists
+def get_est_date_str():
+    tz = pytz.timezone('America/New_York')
+    return datetime.now(tz).date().isoformat()
+
 def load_quota_data():
     try:
         if os.path.exists(QUOTA_FILE_PATH):
             with open(QUOTA_FILE_PATH, 'r') as f:
-                return json.load(f)
-        return default_quota_usage
+                data = json.load(f)
+            # Daily reset logic
+            current_date = get_est_date_str()
+            last_reset = data.get('last_reset')
+            if last_reset != current_date:
+                # Reset all per-operation counts
+                for k in YT_API_QUOTA_COSTS.keys():
+                    data[k] = 0
+                data['last_reset'] = current_date
+                with open(QUOTA_FILE_PATH, 'w') as f:
+                    json.dump(data, f)
+            return data
+        # If file doesn't exist, create with all zeros and today's date
+        data = default_quota_usage.copy()
+        data['last_reset'] = get_est_date_str()
+        with open(QUOTA_FILE_PATH, 'w') as f:
+            json.dump(data, f)
+        return data
     except Exception as e:
         logger.error(f"Error loading quota data: {str(e)}")
-        return default_quota_usage
+        data = default_quota_usage.copy()
+        data['last_reset'] = get_est_date_str()
+        return data
 
-# Save quota data to file
-def save_quota_data():
+def save_quota_data(quota_usage):
+    # Ensure last_reset is preserved
+    if os.path.exists(QUOTA_FILE_PATH):
+        try:
+            with open(QUOTA_FILE_PATH, 'r') as f:
+                data = json.load(f)
+            quota_usage['last_reset'] = data.get('last_reset', get_est_date_str())
+        except Exception:
+            quota_usage['last_reset'] = get_est_date_str()
+    else:
+        quota_usage['last_reset'] = get_est_date_str()
     try:
         with open(QUOTA_FILE_PATH, 'w') as f:
             json.dump(quota_usage, f)
@@ -76,49 +107,30 @@ def save_quota_data():
         logger.error(f"Error saving quota data: {str(e)}")
 
 # Initialize quota usage from file
+global quota_usage
 quota_usage = load_quota_data()
 
 def increment_quota(api_name: str, count: int = 1):
+    global quota_usage
     if api_name in quota_usage:
         quota_usage[api_name] += count
-        save_quota_data()  # Save after each update
+        save_quota_data(quota_usage)  # Save after each update
 
 def get_total_quota_used():
-    return sum(quota_usage[k] * YT_API_QUOTA_COSTS[k] for k in quota_usage)
+    return sum(quota_usage[k] * YT_API_QUOTA_COSTS[k] for k in YT_API_QUOTA_COSTS if k in quota_usage)
 
 def set_total_quota_value(total_value):
     """
     Set the total YouTube API quota usage to a specific value.
-    
-    This function is crucial for maintaining accurate quota tracking when switching between
-    local development and production environments. Use this to ensure continuity in quota tracking.
-    
-    Usage examples:
-    
-    1. From Python script:
-       from src.functions.helpers.quota_tracker import set_total_quota_value
-       set_total_quota_value(4332)  # Set quota to 4332 units
-    
-    2. From CLI:
-       python -c "from src.functions.helpers.quota_tracker import set_total_quota_value; set_total_quota_value(4332)"
-    
-    3. Using the provided script:
-       python set_quota.py 4332
-    
-    4. From frontend:
-       import { setYoutubeQuota } from './utils/apiClient';
-       await setYoutubeQuota(4332);
-    
-    Args:
-        total_value: The desired total quota usage value
+    This will assign all usage to 'search.list' for simplicity.
     """
-    # A simple approach - distribute the value proportionally to search.list
-    # since it's the most commonly used and has a high cost
-    reset_quota_usage()
-    quota_usage["search.list"] = total_value / YT_API_QUOTA_COSTS["search.list"]
-    save_quota_data()
-    
+    global quota_usage
+    quota_usage = default_quota_usage.copy()
+    quota_usage["search.list"] = total_value // YT_API_QUOTA_COSTS["search.list"]
+    save_quota_data(quota_usage)
+
 def reset_quota_usage():
     global quota_usage
-    quota_usage = {x: 0 for x in YT_API_QUOTA_COSTS.keys()}
-    save_quota_data()
+    quota_usage = default_quota_usage.copy()
+    save_quota_data(quota_usage)
+

@@ -17,7 +17,7 @@ from src.functions.merge_playlists import merge_playlists
 from src.functions.download_yt_song import download_yt_song
 from src.functions.helpers.yt_provider import YoutubeProvider
 from src.functions.helpers.sp_provider import SpotifyProvider
-from src.functions.helpers.quota_tracker import get_total_quota_used, quota_usage, YT_API_QUOTA_COSTS, set_total_quota_value
+from src.functions.helpers.quota_tracker import get_total_quota_used, set_total_quota_value, YT_API_QUOTA_COSTS, quota_usage
 
 # Create logs directory if it doesn't exist
 logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -167,10 +167,13 @@ async def general_exception_handler(request: Request, exc: Exception):
 # api usage endpoint
 @app.get("/api/youtube_quota_usage")
 def youtube_quota_usage():
+    from src.functions.helpers.quota_tracker import get_total_quota_used
+    # The quota limit is typically 10,000 for YouTube Data API v3
+    YT_API_DAILY_LIMIT = 10000
+    used = get_total_quota_used()
     return {
-        "usage": {k: quota_usage[k] * YT_API_QUOTA_COSTS[k] for k in quota_usage},
-        "total": get_total_quota_used(),
-        "limit": 10000
+        "total": used,
+        "limit": YT_API_DAILY_LIMIT
     }
 
 # Endpoint to set quota value manually
