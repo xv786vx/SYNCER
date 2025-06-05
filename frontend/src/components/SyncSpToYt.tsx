@@ -21,7 +21,7 @@ export function SyncSpToYt({ onSync, userId }: SyncSpToYtProps) {
   };
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 mt-10">
       <div className="flex flex-col gap-6 w-40 mx-auto font-cascadia">
         <p className="text-md text-center">Enter the name of your Spotify playlist below!</p>
         <input
