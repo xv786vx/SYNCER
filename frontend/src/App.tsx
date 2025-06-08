@@ -64,6 +64,7 @@ function App() {
   const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
   const [tabFade, setTabFade] = useState(true);
+  const [showProcessesOverlay, setShowProcessesOverlay] = useState(false);
 
   // Fade in effect on tab change
   const quotaExceeded = quota && quota.total >= quota.limit;
@@ -72,6 +73,22 @@ function App() {
     const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
     return () => clearTimeout(timeout);
   }, [activeTab, quotaExceeded]);
+
+  // Fade-in logic for Processes overlay
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    if (processes.length > 0) {
+      setShowProcessesOverlay(false); // Reset to false immediately
+      timeout = setTimeout(() => {
+        setShowProcessesOverlay(true); // Trigger fade-in after short delay
+      }, 50); // 50ms delay before fade-in (was 250)
+    } else {
+      setShowProcessesOverlay(false); // Hide immediately when no processes
+    }
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [processes.length]);
 
   const fetchQuota = async () => {
       try {
@@ -338,29 +355,38 @@ function App() {
       flexDirection: 'row'
     }}>
       <ToastContainer />
-      {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any */}
-      {songs.length > 0 ? (
-        <SongSyncStatus
-          songs={songs}
-          onManualSearch={handleManualSearch}
-          onSkip={handleSkip}
-          onFinalize={handleFinalize}
-        />
-      ) : ytToSpSongs.length > 0 ? (
-        <SongSyncStatus
-          songs={ytToSpSongs}
-          onManualSearch={handleManualSearchYtToSp}
-          onSkip={handleSkipYtToSp}
-          onFinalize={handleFinalizeYtToSp}
-        />
-      ) : (
-        processes.length > 0 && (
-          <ProcessesOverlay
-            processes={processes}
-            onDismiss={dismissProcesses}
+      {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any, with fade for processes */}
+      <AnimatePresence>
+        {songs.length > 0 ? (
+          <SongSyncStatus
+            songs={songs}
+            onManualSearch={handleManualSearch}
+            onSkip={handleSkip}
+            onFinalize={handleFinalize}
           />
-        )
-      )}
+        ) : ytToSpSongs.length > 0 ? (
+          <SongSyncStatus
+            songs={ytToSpSongs}
+            onManualSearch={handleManualSearchYtToSp}
+            onSkip={handleSkipYtToSp}
+            onFinalize={handleFinalizeYtToSp}
+          />
+        ) : processes.length > 0 && showProcessesOverlay ? (
+          <motion.div
+            key="processes-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute inset-0 z-40"
+          >
+            <ProcessesOverlay
+              processes={processes}
+              onDismiss={dismissProcesses}
+            />
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
 
       {/* Sidebar */}
       <div className="relative flex flex-col flex-shrink-0 w-[144px] gap-y-2 p-3 overflow-hidden">
