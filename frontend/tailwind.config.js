@@ -5,9 +5,9 @@ module.exports = {
       colors: {
         brand: {
           dark: "#000000",
-          "accent-1": "#181819",
-          "accent-2": "#313134",
-          "accent-3": "#494A4F",
+          "accent-1": "#1A1A1A",
+          "accent-2": "#333333",
+          "accent-3": "#4C4C4C",
           "gray-1": "#D5D5DA",
           "gray-2": "#C2C1C0",
           green: "#1DB954",
