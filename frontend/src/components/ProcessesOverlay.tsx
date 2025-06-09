@@ -35,7 +35,7 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
               className={`text-sm p-3 rounded-lg text-center ${
                 process.status === 'completed' ? 'bg-green-900' :
                 process.status === 'error' ? 'bg-red-900' :
-                process.status === 'in-progress' ? 'bg-blue-900' :
+                process.status === 'in-progress' ? 'bg-none' :
                 'bg-neutral-700'
               }`}
             >

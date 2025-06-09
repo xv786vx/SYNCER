@@ -65,6 +65,10 @@ function App() {
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
   const [tabFade, setTabFade] = useState(true);
   const [showProcessesOverlay, setShowProcessesOverlay] = useState(false);
+  const [showSongSyncStatusOverlay, setShowSongSyncStatusOverlay] = useState(false);
+  // Add state for fade-out of SongSyncStatus overlay
+  const [isSongSyncStatusFadingOut, setIsSongSyncStatusFadingOut] = useState(false);
+  const [finalizing, setFinalizing] = useState(false);
 
   // Fade in effect on tab change
   const quotaExceeded = quota && quota.total >= quota.limit;
@@ -77,18 +81,34 @@ function App() {
   // Fade-in logic for Processes overlay
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout> | null = null;
-    if (processes.length > 0) {
+    if (processes.length > 0 && songs.length === 0 && ytToSpSongs.length === 0) {
       setShowProcessesOverlay(false); // Reset to false immediately
       timeout = setTimeout(() => {
         setShowProcessesOverlay(true); // Trigger fade-in after short delay
-      }, 50); // 50ms delay before fade-in (was 250)
+      }, 50); // 50ms delay before fade-in
     } else {
-      setShowProcessesOverlay(false); // Hide immediately when no processes
+      setShowProcessesOverlay(false); // Hide immediately when no processes or when SongSyncStatus is about to show
     }
     return () => {
       if (timeout) clearTimeout(timeout);
     };
-  }, [processes.length]);
+  }, [processes.length, songs.length, ytToSpSongs.length]);
+
+  // --- Fade-in logic for SongSyncStatus overlay ---
+  useEffect(() => {
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    if ((songs.length > 0 || ytToSpSongs.length > 0) && !isSongSyncStatusFadingOut) {
+      setShowSongSyncStatusOverlay(false);
+      timeout = setTimeout(() => {
+        setShowSongSyncStatusOverlay(true);
+      }, 200); // 200ms delay for fade-in
+    } else if (!isSongSyncStatusFadingOut) {
+      setShowSongSyncStatusOverlay(false);
+    }
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [songs.length, ytToSpSongs.length, isSongSyncStatusFadingOut]);
 
   const fetchQuota = async () => {
       try {
@@ -234,12 +254,21 @@ function App() {
     );
   };
 
+  // --- Minimal fade-out for SongSyncStatus overlay ---
   const handleFinalize = async () => {
+    setFinalizing(true);
+    // Actually finalize the sync and update state BEFORE fade-out
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
     const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId) as { message?: string };
     setToast(data.message || 'Sync complete!');
-    setSongs([]);
-    setSyncedSpPlaylist('');
+    setFinalizing(false); // triggers spinner fade-out
+    setIsSongSyncStatusFadingOut(true);
+    setShowSongSyncStatusOverlay(false); // triggers overlay fade-out
+    setTimeout(() => {
+      setSongs([]);
+      setSyncedSpPlaylist('');
+      setIsSongSyncStatusFadingOut(false);
+    }, 150); // overlay fade-out duration
   };
 
   const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
@@ -266,11 +295,19 @@ function App() {
   };
 
   const handleFinalizeYtToSp = async () => {
+    setFinalizing(true);
+    // Actually finalize the sync and update state BEFORE fade-out
     const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
     const data = await API.finalizeYtToSp(syncedYtPlaylist, spIds, userId) as { message?: string };
     setToast(data.message || 'Sync complete!');
-    setYtToSpSongs([]);
-    setSyncedYtPlaylist('');
+    setFinalizing(false); // triggers spinner fade-out
+    setIsSongSyncStatusFadingOut(true);
+    setShowSongSyncStatusOverlay(false); // triggers overlay fade-out
+    setTimeout(() => {
+      setYtToSpSongs([]);
+      setSyncedYtPlaylist('');
+      setIsSongSyncStatusFadingOut(false);
+    }, 150); // overlay fade-out duration
   };
 
   const dismissProcesses = () => setProcesses([]);
@@ -357,21 +394,43 @@ function App() {
       <ToastContainer />
       {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any, with fade for processes */}
       <AnimatePresence>
-        {songs.length > 0 ? (
-          <SongSyncStatus
-            songs={songs}
-            onManualSearch={handleManualSearch}
-            onSkip={handleSkip}
-            onFinalize={handleFinalize}
-          />
-        ) : ytToSpSongs.length > 0 ? (
-          <SongSyncStatus
-            songs={ytToSpSongs}
-            onManualSearch={handleManualSearchYtToSp}
-            onSkip={handleSkipYtToSp}
-            onFinalize={handleFinalizeYtToSp}
-          />
-        ) : processes.length > 0 && showProcessesOverlay ? (
+        {showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && songs.length > 0 ? (
+          <motion.div
+            key="song-sync-status-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute inset-0 z-40"
+          >
+            <SongSyncStatus
+              songs={songs}
+              onManualSearch={handleManualSearch}
+              onSkip={handleSkip}
+              onFinalize={handleFinalize}
+              finalizing={finalizing}
+              setFinalizing={setFinalizing}
+            />
+          </motion.div>
+        ) : showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && ytToSpSongs.length > 0 ? (
+          <motion.div
+            key="yt-song-sync-status-overlay"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="absolute inset-0 z-40"
+          >
+            <SongSyncStatus
+              songs={ytToSpSongs}
+              onManualSearch={handleManualSearchYtToSp}
+              onSkip={handleSkipYtToSp}
+              onFinalize={handleFinalizeYtToSp}
+              finalizing={finalizing}
+              setFinalizing={setFinalizing}
+            />
+          </motion.div>
+        ) : (!showSongSyncStatusOverlay && processes.length > 0 && showProcessesOverlay) ? (
           <motion.div
             key="processes-overlay"
             initial={{ opacity: 0 }}
