@@ -1,9 +1,10 @@
-#root {
+/* Removed max-width, margin, and padding from #root to allow full-screen layout */
+/* #root {
   max-width: 1280px;
   margin: 0 auto;
   padding: 2rem;
   text-align: center;
-}
+} */
 
 .logo {
   height: 6em;
