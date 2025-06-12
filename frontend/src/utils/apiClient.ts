@@ -20,8 +20,8 @@
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
 
 // Base URL configuration
-// const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
-const API_BASE_URL = "http://localhost:8000"; // Local backend for development
+const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
+//const API_BASE_URL = "http://localhost:8000"; // Local backend for development
 
 // Common fetch options to use for all requests
 const defaultFetchOptions: RequestInit = {
@@ -223,4 +223,35 @@ export async function downloadYtSong(
     const response = await fetchApi(url);
     return APIErrorHandler.handleResponse(response);
   }, "Failed to download YouTube song");
+}
+
+// YouTube OAuth: Get auth URL
+export async function getYoutubeAuthUrl(userId: string) {
+  const url = `${API_BASE_URL}/api/youtube_auth_url?user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    const data = await APIErrorHandler.handleResponse(response);
+    return (data as { auth_url: string }).auth_url;
+  }, "Failed to get YouTube auth URL");
+}
+
+// Add a function to trigger YouTube OAuth from the frontend
+export async function startYoutubeOAuth(userId: string) {
+  const authUrl = await getYoutubeAuthUrl(userId);
+  if (authUrl) {
+    window.open(authUrl, "_blank");
+  } else {
+    throw new Error("Failed to get YouTube OAuth URL");
+  }
+}
+
+// Check YouTube authentication status for a user
+export async function getYoutubeAuthStatus(
+  userId: string
+): Promise<{ authenticated: boolean } | null> {
+  const url = `${API_BASE_URL}/api/youtube_auth_status?user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to check YouTube authentication status");
 }

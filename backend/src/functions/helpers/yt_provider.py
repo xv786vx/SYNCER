@@ -31,6 +31,7 @@ class YoutubeProvider(Provider):
     token_store = {}
 
     def __init__(self, user_id):
+        print("sanity check")
         if not user_id:
             raise ValueError("YoutubeProvider requires a user_id for token management!")
         self.user_id = user_id
@@ -47,23 +48,31 @@ class YoutubeProvider(Provider):
 
         # Create client_secrets JSON if it doesn't exist
         if not os.path.exists(CLIENT_SECRETS_FILE):
+            # Always print and write the client_secrets JSON for debugging
             print("Creating client_secrets.json file from environment variables...")
-            redirect_uris = yt_redirect_uri.split(',')
+            redirect_uris = [uri.strip() for uri in yt_redirect_uri.split(',')]
+            client_secrets = {
+                "web": {
+                    "client_id": yt_client_id,
+                    "project_id": yt_project_id,
+                    "auth_uri": yt_auth_uri,
+                    "token_uri": yt_token_uri,
+                    "auth_provider_x509_cert_url": yt_auth_provider_x509_cert_url,
+                    "client_secret": yt_client_secret,
+                    "redirect_uris": redirect_uris
+                }
+            }
             with open(CLIENT_SECRETS_FILE, 'w') as f:
-                f.write(f'''{{
-                    "web": {{
-                        "client_id": "{yt_client_id}",
-                        "project_id": "{yt_project_id}",
-                        "auth_uri": "{yt_auth_uri}",
-                        "token_uri": "{yt_token_uri}",
-                        "auth_provider_x509_cert_url": "{yt_auth_provider_x509_cert_url}",
-                        "client_secret": "{yt_client_secret}",
-                        "redirect_uris": {redirect_uris}
-                    }}
-                }}''')
+                json.dump(client_secrets, f, indent=2)
+            print(f"Wrote client_secrets.json to: {CLIENT_SECRETS_FILE}")
+            # Print the actual file contents after writing
+            with open(CLIENT_SECRETS_FILE, 'r') as f:
+                print("Actual client_secrets.json file content:")
+                print(f.read())
 
         credentials = self.load_credentials_from_memory()
 
+        # Only refresh if we have a refresh token
         if credentials and credentials.expired and credentials.refresh_token:
             try:
                 print("Refreshing expired YouTube token...")
@@ -74,26 +83,10 @@ class YoutubeProvider(Provider):
                 print(f"Failed to refresh token: {e}")
                 credentials = None
 
+        # If credentials are missing or invalid, raise an error (do not start OAuth flow)
         if not credentials or not credentials.valid:
-            print("Starting new YouTube authentication flow using client secrets file...")
-            try:
-                flow = InstalledAppFlow.from_client_secrets_file(
-                    CLIENT_SECRETS_FILE,
-                    scopes=scopes
-                )
-
-                credentials = flow.run_local_server(
-                    port=0,
-                    access_type='offline',
-                    prompt='consent'
-                )
-
-                self.save_credentials_to_memory(credentials)
-                print("New authentication successful! Token saved.")
-
-            except Exception as e:
-                print(f"Authentication failed: {e}")
-                raise
+            print("No valid YouTube credentials found for user. OAuth must be completed via web flow.")
+            raise Exception("YouTube authentication required. Please authenticate via the web flow.")
 
         try:
             self.youtube = build('youtube', 'v3', credentials=credentials)
@@ -122,6 +115,10 @@ class YoutubeProvider(Provider):
             print(f"Credentials saved to {self.token_file}")
         except Exception as e:
             print(f"Failed to save credentials to file: {e}")
+
+    def _check_authenticated(self):
+        if not hasattr(self, 'youtube') or self.youtube is None:
+            raise Exception("YouTube authentication required. Please authenticate via the web flow.")
 
     def search_auto(self, track_name, artists) -> list:
         """algorithmically processes track_name and artists from Spotify to search for equivalent Youtube video."""
@@ -273,6 +270,7 @@ class YoutubeProvider(Provider):
         
     
     def get_playlists(self):
+        self._check_authenticated()
         """Obtains a list of the user's Youtube playlists"""
         try: # Add try...except here for detailed error on this specific call
             print("Attempting to execute self.youtube.playlists().list...")
@@ -299,6 +297,7 @@ class YoutubeProvider(Provider):
     
 
     def get_playlist_by_name(self, playlist_name):
+        self._check_authenticated()
         """given a Youtube playlist name, return the playlist's information.
 
         Args:
@@ -324,6 +323,7 @@ class YoutubeProvider(Provider):
 
 
     def get_playlist_items(self, playlist_id):
+        self._check_authenticated()
         """Given a Youtube playlist id, return the track's title, artists and id of each track in the playlist.
 
         Args:
@@ -357,6 +357,7 @@ class YoutubeProvider(Provider):
     
 
     def add_to_playlist(self, playlist_id, item_ids) -> None:
+        self._check_authenticated()
         """add a list of videos (through id) to a Youtube playlist.
 
         Args:
@@ -385,6 +386,7 @@ class YoutubeProvider(Provider):
     
 
     def create_playlist(self, playlist_name):
+        self._check_authenticated()
         """creates a YouTube playlist with the given name.
 
         Args:
@@ -414,6 +416,7 @@ class YoutubeProvider(Provider):
     
 
     def download_song(self, track_id):
+        self._check_authenticated()
         """Downloads a song from Youtube given a video ID."""
         url = f"https://www.youtube.com/watch?v={track_id}"
         ydl_opts = {
@@ -438,6 +441,7 @@ class YoutubeProvider(Provider):
 
 
     def download_playlist(self, playlist_id, playlist_name):
+        self._check_authenticated()
         """YT_PROVIDER EXCLUSIVE. Downloads a playlist from Youtube given a video id.
             ***FFMPEG IS REQUIRED FOR INSTALLATION, WORKING ON BUNDLING THIS INTO THE PACKAGE***
 

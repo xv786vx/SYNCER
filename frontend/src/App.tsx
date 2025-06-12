@@ -16,9 +16,10 @@ import { SongSyncStatus } from './components/SongSyncStatus';
 import { ToastContainer } from './components/Toast';
 import { ToastNotification } from './components/ToastNotification';
 import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
-import { v4 as uuidv4 } from 'uuid';
 import { motion, AnimatePresence } from 'framer-motion'
 import Dither from "./components/Dither";
+import { startYoutubeOAuth } from './utils/apiClient';
+import { getOrCreateUserId } from './utils/userId';
 
 function getMsUntilMidnightEST() {
   // Get current time in UTC
@@ -42,15 +43,8 @@ function formatMs(ms: number) {
 }
 
 function App() {
-  // Persist userId in localStorage to ensure consistent user/session identity
-  const [userId] = useState(() => {
-    let stored = localStorage.getItem('userId');
-    if (!stored) {
-      stored = uuidv4();
-      localStorage.setItem('userId', stored);
-    }
-    return stored;
-  });
+  // Use persistent userId from Chrome storage or localStorage
+  const [userId, setUserId] = useState<string | null>(null);
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("1");
@@ -148,6 +142,7 @@ function App() {
     }
   }
   const handleSyncSpToYt = async (playlistName: string, userId: string) => {
+    if (!userId) return;
     console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     updateProcess(processId, 'in-progress', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
@@ -176,6 +171,7 @@ function App() {
     }
   };
   const handleSyncYtToSp = async (playlistName: string, userId: string) => {
+    if (!userId) return;
     const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
     try {
       const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
@@ -202,6 +198,7 @@ function App() {
     }
   };
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
+    if (!userId) return;
     const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
     try {
       const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
@@ -217,6 +214,7 @@ function App() {
     }
   };
   const handleDownloadSong = async (songTitle: string, artists: string, userId: string) => {
+    if (!userId) return;
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
     try {
       const data = await API.downloadYtSong(songTitle, artists, userId) as APIResponse;
@@ -232,6 +230,7 @@ function App() {
     }
   };
   const handleManualSearch = async (song: SongStatus, idx: number) => {
+    if (!userId) return;
     const data = await API.manualSearchSpToYt(song.name, song.artist, userId) as { status: string; yt_id?: string };
     setSongs(prev =>
       prev.map((s, i) =>
@@ -256,6 +255,7 @@ function App() {
 
   // --- Minimal fade-out for SongSyncStatus overlay ---
   const handleFinalize = async () => {
+    if (!userId) return;
     setFinalizing(true);
     // Actually finalize the sync and update state BEFORE fade-out
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
@@ -272,6 +272,7 @@ function App() {
   };
 
   const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
+    if (!userId) return;
     const data = await API.manualSearchYtToSp(song.name, song.artist, userId) as { status: string; sp_id?: string };
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
@@ -295,6 +296,7 @@ function App() {
   };
 
   const handleFinalizeYtToSp = async () => {
+    if (!userId) return;
     setFinalizing(true);
     // Actually finalize the sync and update state BEFORE fade-out
     const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
@@ -382,7 +384,46 @@ function App() {
       }, 150); // match duration-200
       return () => clearTimeout(timeout);
     }
-  }, [tabFade, pendingTab, activeTab]);  return (
+  }, [tabFade, pendingTab, activeTab]); 
+
+  // On mount, get or create userId
+  useEffect(() => {
+    getOrCreateUserId().then(setUserId);
+  }, []);
+
+  // Only check auth and trigger OAuth if userId is loaded
+  useEffect(() => {
+    if (!userId) return;
+    // Remove auto-auth on mount. Only check status if you want to use it elsewhere.
+    const checkAuth = async () => {
+      try {
+        await API.getYoutubeAuthStatus(userId);
+      } catch {
+        // Optionally handle error
+      }
+    };
+    checkAuth();
+  }, [userId]);
+
+  // Handler to check auth and trigger OAuth only when needed
+  const ensureYoutubeAuth = async () => {
+    if (!userId) return;
+    const resp = await API.getYoutubeAuthStatus(userId);
+    if (!resp || !resp.authenticated) {
+      await startYoutubeOAuth(userId);
+    }
+  };
+
+  if (!userId) {
+    // Show a loading spinner or message until userId is loaded
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white">
+        <span>Loading...</span>
+      </div>
+    );
+  }
+
+  return (
     <div className="flex w-full h-full min-h-0 min-w-0 bg-brand-dark text-white font-cascadia" style={{ 
       width: '360px', 
       position: 'relative',
@@ -525,10 +566,10 @@ function App() {
             </div>
           ) : (
             <>
-              {displayedTab === "1" && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId} />}
-              {displayedTab === "2" && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId} />}
-              {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId} />}
-              {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId} />}
+              {displayedTab === "1" && userId && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId as string} ensureYoutubeAuth={ensureYoutubeAuth} />}
+              {displayedTab === "2" && userId && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId as string} ensureYoutubeAuth={ensureYoutubeAuth} />}
+              {displayedTab === "3" && userId && <MergePlaylists onMerge={handleMergePlaylists} userId={userId as string} ensureYoutubeAuth={ensureYoutubeAuth} />}
+              {displayedTab === "4" && userId && <DownloadSong onDownload={handleDownloadSong} userId={userId as string} />}
             </>
           )}
         </motion.div>

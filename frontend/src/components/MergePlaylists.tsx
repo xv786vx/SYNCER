@@ -3,9 +3,11 @@ import { APIErrorHandler } from '../utils/errorHandling';
 
 interface MergePlaylistsProps {
   onMerge: (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => Promise<void>;
+  userId: string;
+  ensureYoutubeAuth: () => Promise<void>;
 }
 
-export function MergePlaylists({ onMerge, userId }: MergePlaylistsProps & { userId: string }) {
+export function MergePlaylists({ onMerge, userId, ensureYoutubeAuth }: MergePlaylistsProps) {
   const [mergeYtPlaylist, setMergeYtPlaylist] = useState('');
   const [mergeSpPlaylist, setMergeSpPlaylist] = useState('');
   const [mergeName, setMergeName] = useState('');
@@ -15,6 +17,7 @@ export function MergePlaylists({ onMerge, userId }: MergePlaylistsProps & { user
       APIErrorHandler.handleError(new Error('Please enter both playlist names'));
       return;
     }
+    await ensureYoutubeAuth();
     await onMerge(mergeYtPlaylist, mergeSpPlaylist, mergeName, userId);
     setMergeYtPlaylist('');
     setMergeSpPlaylist('');

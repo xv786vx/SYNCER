@@ -5,9 +5,10 @@ import { APIErrorHandler } from '../utils/errorHandling';
 interface SyncYtToSpProps {
   onSync: (playlistName: string, userId: string) => Promise<void>;
   userId: string;
+  ensureYoutubeAuth: () => Promise<void>;
 }
 
-export function SyncYtToSp({ onSync, userId }: SyncYtToSpProps) {
+export function SyncYtToSp({ onSync, userId, ensureYoutubeAuth }: SyncYtToSpProps) {
   const [ytPlaylist, setYtPlaylist] = useState('');
 
   const handleSync = async () => {
@@ -15,6 +16,7 @@ export function SyncYtToSp({ onSync, userId }: SyncYtToSpProps) {
       APIErrorHandler.handleError(new Error('Please enter a playlist name'));
       return;
     }
+    await ensureYoutubeAuth();
     await onSync(ytPlaylist, userId);
     setYtPlaylist('');
   };

@@ -18,8 +18,6 @@ class SpotifyProvider(Provider):
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
         token_dir = os.path.join(root_dir, 'auth_tokens')
         os.makedirs(token_dir, exist_ok=True) # Ensure the directory exists
-
-        # Use user_id to create a unique cache path for each user
         self.cache_path = os.path.join(token_dir, f'.cache_{user_id}')
         self.client_id = sp_client_id
         self.client_secret = sp_client_secret
@@ -29,7 +27,7 @@ class SpotifyProvider(Provider):
 
         if is_render:
             # If deployed, use the deployed URL (add this environment variable on Render)
-            self.redirect_uri = os.environ.get("SPOTIFY_REDIRECT_URI", "https://syncer-hwgu.onrender.com/callback")
+            self.redirect_uri = os.environ.get("SPOTIFY_REDIRECT_URI", "https://syncer-26vh.onrender.com/callback")
             print(f"Running in deployed mode, using redirect URI: {self.redirect_uri}")
         else:
             # Locally, use localhost
@@ -38,12 +36,7 @@ class SpotifyProvider(Provider):
 
         self.scope = "playlist-modify-private playlist-modify-public playlist-read-private playlist-read-collaborative"
 
-        # DEBUG: Only delete cache in local dev environment
-        # if not is_render and os.path.exists(self.cache_path):
-        #     print("Deleting existing Spotify cache file to force re-authentication...")
-        #     os.remove(self.cache_path)
-
-        self.sp = self.init_spotify_client() # Store the client instance
+        self.sp = None  # Will be set after authentication
 
     def get_auth_manager(self):
         """Return a SpotifyOAuth object configured."""
@@ -58,36 +51,31 @@ class SpotifyProvider(Provider):
             show_dialog=True # Force show dialog every time for debugging
         )
 
-    def init_spotify_client(self):
-        """Initialize the Spotify client, handling potential auth errors."""
+    def get_auth_url(self):
         auth_manager = self.get_auth_manager()
-        try:
-            # Try to get a token; this might involve user interaction or cache usage
-            token_info = auth_manager.get_access_token(check_cache=True)
-            if not token_info:
-                print("Could not get Spotify token. Manual authorization likely required.")
-                token_info = auth_manager.get_access_token(check_cache=False)
-                if not token_info:
-                    raise SpotifyOauthError("Failed to obtain Spotify token after prompt.")
+        return auth_manager.get_authorize_url()
 
-            print("Spotify token obtained successfully.")
-            sp_client = spotipy.Spotify(auth_manager=auth_manager)
+    def handle_callback(self, code):
+        auth_manager = self.get_auth_manager()
+        token_info = auth_manager.get_access_token(code, as_dict=True)
+        if not token_info:
+            raise SpotifyOauthError("Failed to obtain Spotify token from callback.")
+        self.sp = spotipy.Spotify(auth_manager=auth_manager)
+        return token_info
 
-            # Verify connection
-            user_info = sp_client.current_user()
-            print(f"Spotify authorization successful for user: {user_info['display_name']}")
-            return sp_client
+    def ensure_client(self):
+        if self.sp is not None:
+            return self.sp
+        auth_manager = self.get_auth_manager()
+        if auth_manager.validate_token(auth_manager.cache_handler.get_cached_token()):
+            self.sp = spotipy.Spotify(auth_manager=auth_manager)
+            return self.sp
+        else:
+            raise SpotifyOauthError("No valid Spotify token found. User must authenticate.")
 
-        except SpotifyOauthError as e:
-            print(f"Spotify OAuth error: {e}")
-            raise
-        except Exception as e:
-             print(f"An unexpected error occurred during Spotify initialization: {e}")
-             raise # Re-raise unexpected errors
-    
-    
     def search_auto(self, track_name, artists) -> list:
         """algorithmically processes track_name and artists from YouTube to search for equivalent Spotify track."""
+        self.ensure_client()
         
         # Try multiple search strategies
         search_queries = [
@@ -194,6 +182,8 @@ class SpotifyProvider(Provider):
         Returns:
             str: returns ONLY the Spotify track uri if a suitable match is found, else None.
         """
+        self.ensure_client()
+        
         clean_track_name = preprocess_title(track_name, artists)
         
         query = f"{clean_track_name} {artists}"
@@ -224,6 +214,8 @@ class SpotifyProvider(Provider):
         Returns:
             list[]: a list containing the name, id, image, and uri of each playlist.
         """
+        self.ensure_client()
+        
         playlists = self.sp.current_user_playlists()
         return [
             (
@@ -244,6 +236,8 @@ class SpotifyProvider(Provider):
         Returns:
             dict: {'title': playlist name, 'id': playlist id, 'description': playlist description, 'image': playlist image}
         """
+        self.ensure_client()
+        
         playlists = self.sp.current_user_playlists()
         for pl in playlists['items']:
             if pl['name'].lower() == playlist_name.lower():  # Case-insensitive comparison
@@ -265,6 +259,8 @@ class SpotifyProvider(Provider):
         Returns:
             list[dict]: [{'title': track title, 'artist': track artist}, ...]
         """
+        self.ensure_client()
+        
         playlist_items = self.sp.playlist_tracks(playlist_id)
         tracks_info = []
         for item in playlist_items['items']:
@@ -289,6 +285,8 @@ class SpotifyProvider(Provider):
         Returns:
             None: only mutates the playlist.
         """
+        self.ensure_client()
+        
         try:
             self.sp.playlist_add_items(playlist_id, track_uri)
             print('sigma')
@@ -307,6 +305,8 @@ class SpotifyProvider(Provider):
         Returns:
             None?: only mutates the associated Spotify profile by making a playlist for them.
         """
+        self.ensure_client()
+        
         playlist = self.sp.user_playlist_create(
             user=self.sp.current_user()['id'], 
             name=playlist_name, public=True, 
