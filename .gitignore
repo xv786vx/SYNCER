@@ -26,6 +26,7 @@ downloads/
 # build and dist
 build/
 dist/
+frontend/dist.zip
 
 main.spec
 

@@ -1,79 +1,76 @@
-<center>
-    <h1 align="center">SYNCER 🎛️</h1>
-    <h3 align="center"> <strong>Music across platforms.</strong> </h4>
-    <h4 align="center">Helps users sync playlists (mostly) automatically across Spotify and YouTube.</h5>
-</center>
+# SYNCER
 
-## 📃 Features
+A Chrome extension and web app to sync your Spotify and YouTube playlists, built with a modern backend and frontend stack.
 
-- Sync playlists between Spotify and YouTube with no song limit
-- Download YouTube videos as audio files
-- Merge playlists from both platforms into a new playlist
-- Smart matching of songs across platforms
+## 🌐 Live Links & Dashboards
 
-## 🤖 Installation and Setup
+- **Website:** [https://syncer-web-three.vercel.app](https://syncer-26vh.onrender.com)
+- **Chrome Extension Releases:** [GitHub Releases](https://github.com/yourusername/yourrepo/releases)
+- **Backend API:** [https://syncer-26vh.onrender.com](https://syncer-26vh.onrender.com)
+- **Spotify Developer Dashboard:** [Spotify Dashboard](https://developer.spotify.com/dashboard/applications)
+- **Google Cloud Console:** [Google Cloud Console](https://console.cloud.google.com/)
+- **Vercel Dashboard (Web Frontend):** [Vercel](https://vercel.com/dashboard)
 
-### Prerequisites
+## 🧩 Chrome Extension Installation
 
-- [Node.js](https://nodejs.org/) (v16 or higher) for the frontend
-- [Python](https://www.python.org/) (v3.8 or higher) for the backend
-- [FFMPEG](https://ffmpeg.org/download.html) for YouTube audio downloads
+### Option 1: Download from Release
 
-### Backend Setup
+1. Go to the [Releases page](https://github.com/xv786vx/SYNCER/releases).
+2. Download the latest `dist.zip` and unzip it.
+3. In Chrome, go to `chrome://extensions/`, enable Developer Mode, and click **Load unpacked**.
+4. Select the unzipped `dist` folder.
 
-1. Navigate to the backend directory:
+### Option 2: Build from Source
 
+1. Clone this repo:
+   ```sh
+   git clone https://github.com/xv786vx/SYNCER.git
+   cd SYNCER
    ```
-   cd backend
-   ```
-
-2. Install required dependencies:
-
-   ```
-   pip install -r requirements.txt
-   ```
-
-3. Start the backend server with CORS development mode:
-
-   ```
-   # On Windows PowerShell
-   $env:CORS_DEV_MODE="true"; python server.py
-
-   # On Linux/macOS
-   CORS_DEV_MODE=true python server.py
-   ```
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
-
-   ```
-   cd frontend
-   ```
-
-2. Install dependencies:
-
-   ```
+2. Install dependencies and build:
+   ```sh
    npm install
+   npm run build
    ```
+3. Load the `dist` folder in Chrome as above.
 
-3. Start the development server:
+## 🛠️ Build & Deployment Checklist
 
-   ```
-   npm run dev
-   ```
+### Backend (API)
 
-4. Open your browser at the URL displayed in the console (typically http://localhost:5173)
+- [ ] Build Docker image:
+  ```sh
+  docker build -t yourdockerhub/syncer-backend:latest .
+  ```
+- [ ] Push Docker image:
+  ```sh
+  docker push yourdockerhub/syncer-backend:latest
+  ```
+- [ ] Redeploy on Render (or your cloud provider).
 
-## 🔄 CORS Configuration
+### Frontend (Chrome Extension)
 
-To ensure proper communication between the frontend and backend:
+- [ ] Build extension:
+  ```sh
+  npm run build
+  ```
+- [ ] Zip the `dist` folder for release.
+- [ ] Upload `dist.zip` to [GitHub Releases](https://github.com/yourusername/yourrepo/releases).
 
-1. The backend server must run with CORS development mode enabled:
+### Web (Vercel)
 
-   - Set environment variable `CORS_DEV_MODE="true"` before starting the server
-   - This enables permissive CORS settings allowing requests from any origin
+- [ ] Push changes to the `web` directory or main branch on GitHub.
+- [ ] Vercel will auto-deploy your changes.
 
-2. For production deployment:
-   - Update the API base URL in `frontend/src/utils/apiClient.ts` to point to your deployed backend
-   - Configure the backend's CORS settings in `backend/server.py` to allow specific origins
+### Spotify/Google Cloud
+
+- [ ] Ensure your redirect URIs are up to date in the [Spotify Dashboard](https://developer.spotify.com/dashboard/applications) and [Google Cloud Console](https://console.cloud.google.com/).
+
+## 🤝 Contributing
+
+Pull requests are welcome! For major changes, please open an issue first to discuss what you would like to change.
+
+## 🆘 Support
+
+- For issues, open a [GitHub Issue](https://github.com/yourusername/yourrepo/issues).
+- For questions, contact [your email or Discord].
