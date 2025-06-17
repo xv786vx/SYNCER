@@ -63,6 +63,8 @@ function App() {
   // Add state for fade-out of SongSyncStatus overlay
   const [isSongSyncStatusFadingOut, setIsSongSyncStatusFadingOut] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
+  const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
+  const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
 
   // Fade in effect on tab change
   const quotaExceeded = quota && quota.total >= quota.limit;
@@ -143,6 +145,8 @@ function App() {
   }
   const handleSyncSpToYt = async (playlistName: string, userId: string) => {
     if (!userId) return;
+    await ensureSpotifyAuth();
+    await ensureYoutubeAuth();
     console.log('Syncing Spotify playlist:', playlistName);
     const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
     updateProcess(processId, 'in-progress', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
@@ -172,6 +176,8 @@ function App() {
   };
   const handleSyncYtToSp = async (playlistName: string, userId: string) => {
     if (!userId) return;
+    await ensureSpotifyAuth();
+    await ensureYoutubeAuth();
     const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
     try {
       const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
@@ -183,8 +189,7 @@ function App() {
             'in-progress',
             `Syncing "${song.name} by ${song.artist}" (${i + 1}/${data.songs.length})`
           );
-          // Simulate per-song sync delay (remove this if backend is already per-song)
-          await new Promise(res => setTimeout(res, 150)); // 150ms per song for demo
+          await new Promise(res => setTimeout(res, 150));
         }
         setYtToSpSongs(data.songs);
         setSyncedYtPlaylist(playlistName);
@@ -192,9 +197,9 @@ function App() {
         setToast(data.message || 'Sync complete!');
         fetchQuota();
       }
-    } catch (error) {
+    } catch (e) {
       updateProcess(processId, 'error', 'Failed to sync playlist');
-      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
+      APIErrorHandler.handleError(e as Error, 'Failed to sync playlist');
     }
   };
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
@@ -393,13 +398,28 @@ function App() {
 
   // Only check auth and trigger OAuth if userId is loaded
   useEffect(() => {
-    if (!userId) return;
-    // Remove auto-auth on mount. Only check status if you want to use it elsewhere.
+    if (!userId) {
+      console.log('No userId available yet, skipping auth check');
+      return;
+    }
+    console.log('Checking initial YouTube auth status for userId:', userId);
+    // Check auth status on mount, but don't trigger OAuth automatically
     const checkAuth = async () => {
       try {
-        await API.getYoutubeAuthStatus(userId);
-      } catch {
-        // Optionally handle error
+        console.log('Making API call to check YouTube auth status...');
+        const resp = await API.getYoutubeAuthStatus(userId);
+        console.log('Initial auth status check response:', resp);
+        setIsYoutubeAuthenticated(resp?.authenticated ?? false);
+        if (!resp || !resp.authenticated) {
+          console.log('User not authenticated with YouTube');
+          // Don't trigger OAuth here - wait for user action
+        } else {
+          console.log('User is authenticated with YouTube');
+        }
+      } catch (error) {
+        console.error('Error checking initial YouTube auth status:', error);
+        setIsYoutubeAuthenticated(false);
+        // Don't trigger OAuth here - wait for user action
       }
     };
     checkAuth();
@@ -407,10 +427,69 @@ function App() {
 
   // Handler to check auth and trigger OAuth only when needed
   const ensureYoutubeAuth = async () => {
+    if (!userId) {
+      console.log('No userId available, cannot check YouTube auth');
+      return;
+    }
+    console.log('Checking YouTube auth for user_id:', userId);
+    try {
+      // If we already know the auth status, use it
+      if (isYoutubeAuthenticated === true) {
+        console.log('User already authenticated with YouTube (from state)');
+        return;
+      }
+      
+      const resp = await API.getYoutubeAuthStatus(userId);
+      console.log('Auth status response:', resp);
+      setIsYoutubeAuthenticated(resp?.authenticated ?? false);
+      
+      if (!resp || !resp.authenticated) {
+        console.log('User not authenticated with YouTube, starting OAuth flow...');
+        await startYoutubeOAuth(userId);
+        // After OAuth completes, update the auth status
+        setIsYoutubeAuthenticated(true);
+      } else {
+        console.log('User already authenticated with YouTube');
+      }
+    } catch (error) {
+      console.error('Error checking YouTube auth status:', error);
+      setIsYoutubeAuthenticated(false);
+      // Only start OAuth if we get a specific error indicating auth is needed
+      if (error instanceof Error && error.message.includes('authentication')) {
+        console.log('Authentication error detected, starting OAuth flow...');
+        await startYoutubeOAuth(userId);
+        // After OAuth completes, update the auth status
+        setIsYoutubeAuthenticated(true);
+      } else {
+        console.error('Unexpected error during auth check:', error);
+        throw error; // Re-throw other errors
+      }
+    }
+  };
+
+  // Check Spotify auth on mount
+  useEffect(() => {
     if (!userId) return;
-    const resp = await API.getYoutubeAuthStatus(userId);
+    const checkSpotifyAuth = async () => {
+      try {
+        const resp = await API.getSpotifyAuthStatus(userId);
+        setIsSpotifyAuthenticated(resp?.authenticated ?? false);
+      } catch {
+        setIsSpotifyAuthenticated(false);
+      }
+    };
+    checkSpotifyAuth();
+  }, [userId]);
+
+  // Handler to check auth and trigger OAuth only when needed
+  const ensureSpotifyAuth = async () => {
+    if (!userId) return;
+    if (isSpotifyAuthenticated === true) return;
+    const resp = await API.getSpotifyAuthStatus(userId);
+    setIsSpotifyAuthenticated(resp?.authenticated ?? false);
     if (!resp || !resp.authenticated) {
-      await startYoutubeOAuth(userId);
+      await API.startSpotifyOAuth(userId);
+      setIsSpotifyAuthenticated(true); // Optionally, re-check after OAuth
     }
   };
 

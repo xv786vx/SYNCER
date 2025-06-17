@@ -255,3 +255,31 @@ export async function getYoutubeAuthStatus(
     return APIErrorHandler.handleResponse(response);
   }, "Failed to check YouTube authentication status");
 }
+
+export async function getSpotifyAuthStatus(
+  userId: string
+): Promise<{ authenticated: boolean } | null> {
+  const url = `${API_BASE_URL}/api/spotify_auth_status?user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to check Spotify authentication status");
+}
+
+export async function getSpotifyAuthUrl(userId: string) {
+  const url = `${API_BASE_URL}/api/spotify_auth_url?user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    const data = await APIErrorHandler.handleResponse(response);
+    return (data as { auth_url: string }).auth_url;
+  }, "Failed to get Spotify auth URL");
+}
+
+export async function startSpotifyOAuth(userId: string) {
+  const authUrl = await getSpotifyAuthUrl(userId);
+  if (authUrl) {
+    window.open(authUrl, "_blank");
+  } else {
+    throw new Error("Failed to get Spotify OAuth URL");
+  }
+}

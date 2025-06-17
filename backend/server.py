@@ -16,9 +16,10 @@ from src.functions.sync_sp_to_yt import sync_sp_to_yt
 from src.functions.merge_playlists import merge_playlists
 from src.functions.download_yt_song import download_yt_song
 from src.functions.helpers.yt_provider import YoutubeProvider
-from src.functions.helpers.sp_provider import SpotifyProvider
+from src.functions.helpers.sp_provider import SpotifyProvider, is_spotify_authenticated
 from src.functions.helpers.quota_tracker import get_total_quota_used, set_total_quota_value, YT_API_QUOTA_COSTS, quota_usage
 from google_auth_oauthlib.flow import Flow
+from src.db.youtube_token import save_youtube_token, get_youtube_token, is_youtube_authenticated
 
 # Create logs directory if it doesn't exist
 logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -361,88 +362,34 @@ def get_spotify_auth_url(user_id: str):
         logger.error(f"Error generating Spotify auth URL: {str(e)}")
         raise APIError(f"Failed to generate Spotify auth URL: {str(e)}")
 
-@app.get("/api/spotify_callback")
+@app.get("/spotify_callback")
 def spotify_callback(code: str, state: str = None, user_id: str = None):
-    """Handle the redirect from Spotify, exchange code for tokens, and store them."""
+    """
+    Handle the redirect from Spotify, exchange code for tokens, and store them.
+    """
     try:
-        if not user_id:
-            raise ValidationError("user_id is required for Spotify callback.")
+        if not code:
+            raise Exception("No code provided in callback.")
+        from src.functions.helpers.sp_provider import SpotifyProvider
+        # You may need to extract user_id from state or session if you use it
         sp = SpotifyProvider(user_id)
         token_info = sp.handle_callback(code)
         # Optionally, redirect to frontend with a success message
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
         return RedirectResponse(url=f"{frontend_url}/spotify-auth-success?user_id={user_id}")
     except Exception as e:
-        logger.error(f"Spotify callback error: {str(e)}")
-        raise APIError(f"Failed to complete Spotify OAuth: {str(e)}")
+        return {"error": str(e)}
 
-@app.get("/api/youtube_auth_url")
-def get_youtube_auth_url(user_id: str):
-    """Return the YouTube authorization URL for the frontend/extension to redirect the user."""
-    try:
-        client_secrets_file = ensure_youtube_client_secrets()
-        scopes = [
-            'https://www.googleapis.com/auth/youtube',
-            'https://www.googleapis.com/auth/youtube.readonly',
-        ]
-        redirect_uri = os.environ.get("YT_WEB_REDIRECT_URI", "https://syncer-26vh.onrender.com/youtube_callback")
-        # Do NOT append user_id as a query param. Use state instead.
-        flow = Flow.from_client_secrets_file(
-            client_secrets_file,
-            scopes=scopes,
-            redirect_uri=redirect_uri
-        )
-        auth_url, state = flow.authorization_url(
-            access_type='offline',
-            include_granted_scopes='true',
-            prompt='consent',
-            state=user_id  # Pass user_id as state
-        )
-        return {"auth_url": auth_url}
-    except Exception as e:
-        logger.error(f"Error generating YouTube auth URL: {str(e)}")
-        raise APIError(f"Failed to generate YouTube auth URL: {str(e)}")
-
-@app.get("/api/youtube_callback")
-def youtube_callback(code: str, state: str = None, user_id: str = None):
-    """Handle the redirect from YouTube, exchange code for tokens, and store them."""
-    try:
-        # user_id is now passed as state
-        if not state:
-            raise ValidationError("user_id (state) is required for YouTube callback.")
-        user_id = state
-        client_secrets_file = os.path.join(os.path.dirname(__file__), 'src', 'auth_tokens', 'desktop_client_secrets.json')
-        scopes = [
-            'https://www.googleapis.com/auth/youtube',
-            'https://www.googleapis.com/auth/youtube.readonly',
-        ]
-        redirect_uri = os.environ.get("YT_WEB_REDIRECT_URI", "https://syncer-26vh.onrender.com/youtube_callback")
-        flow = Flow.from_client_secrets_file(
-            client_secrets_file,
-            scopes=scopes,
-            redirect_uri=redirect_uri
-        )
-        flow.fetch_token(code=code)
-        creds = flow.credentials
-        # Save creds for user_id (token file logic as in yt_provider)
-        token_dir = os.path.join(os.path.dirname(__file__), 'src', 'auth_tokens')
-        os.makedirs(token_dir, exist_ok=True)
-        token_file = os.path.join(token_dir, f"{user_id}-yttoken.json")
-        with open(token_file, 'w') as f:
-            f.write(creds.to_json())
-        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
-        return RedirectResponse(url=f"{frontend_url}/youtube-auth-success?user_id={user_id}")
-    except Exception as e:
-        logger.error(f"YouTube callback error: {str(e)}")
-        raise APIError(f"Failed to complete YouTube OAuth: {str(e)}")
-
-@app.get("/youtube_callback")
-def youtube_callback_alias(code: str, state: str = None):
-    # Call the same logic as /api/youtube_callback
-    return youtube_callback(code=code, state=state)
+@app.get("/api/spotify_auth_status")
+def spotify_auth_status(user_id: str):
+    """
+    Check if the user is authenticated with Spotify.
+    Returns: { "authenticated": true/false }
+    """
+    is_authenticated = is_spotify_authenticated(user_id)
+    return {"authenticated": is_authenticated}
 
 def ensure_youtube_client_secrets():
-    """Ensure the YouTube client_secrets.json file exists, creating it from env vars if needed."""
     import os, json
     yt_client_id = os.getenv("YT_CLIENT_ID")
     yt_project_id = os.getenv("YT_PROJECT_ID")
@@ -471,14 +418,98 @@ def ensure_youtube_client_secrets():
             json.dump(client_secrets, f, indent=2)
     return client_secrets_file
 
+@app.get("/api/youtube_auth_url")
+def get_youtube_auth_url(user_id: str):
+    """Return the YouTube authorization URL for the frontend/extension to redirect the user."""
+    try:
+        client_secrets_file = ensure_youtube_client_secrets()
+        scopes = [
+            'https://www.googleapis.com/auth/youtube',
+            'https://www.googleapis.com/auth/youtube.readonly',
+        ]
+        redirect_uri = os.environ.get("YT_WEB_REDIRECT_URI", "https://syncer-26vh.onrender.com/youtube_callback")
+        # Do NOT append user_id as a query param. Use state instead.
+        flow = Flow.from_client_secrets_file(
+            client_secrets_file,
+            scopes=scopes,
+            redirect_uri=redirect_uri
+        )
+        auth_url, state = flow.authorization_url(
+            access_type='offline',
+            include_granted_scopes='true',
+            prompt='consent',
+            state=user_id  # Pass user_id as state
+        )
+        return {"auth_url": auth_url}
+    except Exception as e:
+        logger.error(f"Error generating YouTube auth URL: {str(e)}")
+        raise APIError(f"Failed to generate YouTube auth URL: {str(e)}")
+
+@app.get("/youtube_callback")
+def youtube_callback(code: str, state: str = None, user_id: str = None):
+    """Handle the redirect from YouTube, exchange code for tokens, and store them."""
+    try:
+        if not state:
+            raise ValidationError("user_id (state) is required for YouTube callback.")
+        user_id = state
+        client_secrets_file = os.path.join(os.path.dirname(__file__), 'src', 'auth_tokens', 'desktop_client_secrets.json')
+        scopes = [
+            'https://www.googleapis.com/auth/youtube',
+            'https://www.googleapis.com/auth/youtube.readonly',
+        ]
+        redirect_uri = os.environ.get("YT_WEB_REDIRECT_URI", "https://syncer-26vh.onrender.com/youtube_callback")
+        flow = Flow.from_client_secrets_file(
+            client_secrets_file,
+            scopes=scopes,
+            redirect_uri=redirect_uri
+        )
+        flow.fetch_token(code=code)
+        creds = flow.credentials
+        # Save creds for user_id in the database
+        save_youtube_token(user_id, creds.to_json())
+        frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
+        return RedirectResponse(url=f"{frontend_url}/youtube-auth-success?user_id={user_id}")
+    except Exception as e:
+        logger.error(f"YouTube callback error: {str(e)}")
+        raise APIError(f"Failed to complete YouTube OAuth: {str(e)}")
+
 @app.get("/api/youtube_auth_status")
 def youtube_auth_status(user_id: str):
     """
     Check if the user is authenticated with YouTube.
     Returns: { "authenticated": true/false }
     """
-    token_file = os.path.join(os.path.dirname(__file__), 'src', 'auth_tokens', f"{user_id}-yttoken.json")
-    if os.path.exists(token_file):
-        return {"authenticated": True}
-    else:
+    logger.info(f"Checking YouTube auth status for user_id: {user_id}")
+    try:
+        # First check if we have a token in the database
+        token = get_youtube_token(user_id)
+        if not token:
+            logger.info(f"No token found in database for user_id: {user_id}")
+            return {"authenticated": False}
+        
+        # Try to create a YouTube provider to validate the token
+        yt = YoutubeProvider(user_id)
+        is_authenticated = yt._check_authenticated()
+        logger.info(f"YouTube auth status for user_id {user_id}: {is_authenticated}")
+        return {"authenticated": is_authenticated}
+    except Exception as e:
+        logger.error(f"Error checking YouTube auth status for user_id {user_id}: {str(e)}")
         return {"authenticated": False}
+
+# @app.post("/api/test_save_youtube_token")
+# def test_save_youtube_token(user_id: str, token_json: str):
+#     """Test endpoint to save a YouTube token for a user_id."""
+#     try:
+#         save_youtube_token(user_id, token_json)
+#         return {"status": "success", "user_id": user_id}
+#     except Exception as e:
+#         return {"status": "error", "error": str(e)}
+
+# @app.get("/api/test_get_youtube_token")
+# def test_get_youtube_token(user_id: str):
+#     """Test endpoint to get a YouTube token for a user_id."""
+#     try:
+#         token = get_youtube_token(user_id)
+#         return {"user_id": user_id, "token_json": token}
+#     except Exception as e:
+#         return {"status": "error", "error": str(e)}

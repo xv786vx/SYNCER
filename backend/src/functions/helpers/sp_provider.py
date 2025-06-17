@@ -315,3 +315,24 @@ class SpotifyProvider(Provider):
         print(f"Created Spotify playlist: {playlist['name']} with ID: {playlist['id']}")
         #return playlist
 
+def is_spotify_authenticated(user_id):
+    import os
+    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+    token_dir = os.path.join(root_dir, 'auth_tokens')
+    cache_path = os.path.join(token_dir, f'.cache_{user_id}')
+    if not os.path.exists(cache_path):
+        print(f"[SpotifyToken] No token cache found for user_id: {user_id}")
+        return False
+    try:
+        with open(cache_path, 'r') as f:
+            token_data = f.read()
+            if 'access_token' in token_data:
+                print(f"[SpotifyToken] Found valid token for user_id: {user_id}")
+                return True
+            else:
+                print(f"[SpotifyToken] Token cache for user_id: {user_id} does not contain access_token")
+                return False
+    except Exception as e:
+        print(f"[SpotifyToken] Error reading token cache for user_id: {user_id}: {e}")
+        return False
+

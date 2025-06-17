@@ -10,16 +10,26 @@ interface SyncSpToYtProps {
 
 export function SyncSpToYt({ onSync, userId, ensureYoutubeAuth }: SyncSpToYtProps) {
   const [spPlaylist, setSpPlaylist] = useState('');
+  const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
   const handleSync = async () => {
     if (!spPlaylist.trim()) {
       APIErrorHandler.handleError(new Error('Please enter a playlist name'));
       return;
     }
-    await ensureYoutubeAuth();
-    console.log('Syncing Spotify playlist:', spPlaylist);
-    await onSync(spPlaylist, userId);
-    setSpPlaylist('');
+    
+    try {
+      setIsCheckingAuth(true);
+      await ensureYoutubeAuth();
+      console.log('Syncing Spotify playlist:', spPlaylist);
+      await onSync(spPlaylist, userId);
+      setSpPlaylist('');
+    } catch (error) {
+      console.error('Error during sync:', error);
+      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
+    } finally {
+      setIsCheckingAuth(false);
+    }
   };
 
   return (
@@ -32,12 +42,14 @@ export function SyncSpToYt({ onSync, userId, ensureYoutubeAuth }: SyncSpToYtProp
           onChange={(e) => setSpPlaylist(e.target.value)}
           placeholder="Playlist Name..."
           className="bg-transparent border-0 border-b-2 border-brand-green-dark focus:border-brand-green focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
+          disabled={isCheckingAuth}
         />
         <button
           onClick={handleSync}
-          className="w-full py-2 bg-brand-red-dark text-white rounded-md hover:bg-brand-red focus:outline-none focus:ring-2 focus:ring-red-500"
+          className="w-full py-2 bg-brand-red-dark text-white rounded-md hover:bg-brand-red focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          disabled={isCheckingAuth}
         >
-          Sync to <SiYoutube className="inline-block align-text-bottom ml-0.5" />
+          {isCheckingAuth ? 'Checking Auth...' : <>Sync to <SiYoutube className="inline-block align-text-bottom ml-0.5" /></>}
         </button>
       </div>
     </div>

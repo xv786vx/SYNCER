@@ -3,6 +3,7 @@ import Home from './pages/Home';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import TermsOfService from './pages/TermsOfService';
 import YoutubeAuthSuccessPage from './pages/YoutubeAuthSuccessPage';
+import SpotifyAuthSuccessPage from './pages/SpotifyAuthSuccessPage';
 import './App.css'
 import './index.css'
 
@@ -22,6 +23,7 @@ function App() {
           <Route path="/privacy-policy" element={<PrivacyPolicy />} />
           <Route path="/terms-of-service" element={<TermsOfService />} />
           <Route path="/youtube-auth-success" element={<YoutubeAuthSuccessPage />} />
+          <Route path="/spotify-auth-success" element={<SpotifyAuthSuccessPage />} />
           {/* Add more routes as needed */}
         </Routes>
       </div>
