@@ -1,7 +1,11 @@
+<div align="center">
 # SYNCER
+<img src="frontend/public/icon128.png" width="100" alt="SYNCER Logo" />
+
 
 A Chrome extension and web app to sync your Spotify and YouTube playlists, built with a modern backend and frontend stack.
 ## Currently its not on the Chrome Store (will be up within the next 2-6 weeks), so if you'd like to use it, shoot me an email @ firas.aj76@gmail.com with your Google account so I can register it for use!
+</div>
 
 ## 🌐 Live Links & Dashboards
 
@@ -73,5 +77,5 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 
 ## 🆘 Support
 
-- For issues, open a [GitHub Issue](https://github.com/yourusername/yourrepo/issues).
-- For questions, contact [your email or Discord].
+- For issues, open a [GitHub Issue](https://github.com/xv786vx/SYNCER/issues).
+- For questions, contact firas.aj76@gmail.com.
