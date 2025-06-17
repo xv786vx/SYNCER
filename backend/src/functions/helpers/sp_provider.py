@@ -51,9 +51,9 @@ class SpotifyProvider(Provider):
             show_dialog=True # Force show dialog every time for debugging
         )
 
-    def get_auth_url(self):
+    def get_auth_url(self, state=None):
         auth_manager = self.get_auth_manager()
-        return auth_manager.get_authorize_url()
+        return auth_manager.get_authorize_url(state=state or self.user_id)
 
     def handle_callback(self, code):
         auth_manager = self.get_auth_manager()

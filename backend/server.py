@@ -356,7 +356,7 @@ def get_spotify_auth_url(user_id: str):
     """Return the Spotify authorization URL for the frontend/extension to redirect the user."""
     try:
         sp = SpotifyProvider(user_id)
-        url = sp.get_auth_url()
+        url = sp.get_auth_url(state=user_id)
         return {"auth_url": url}
     except Exception as e:
         logger.error(f"Error generating Spotify auth URL: {str(e)}")
@@ -368,13 +368,14 @@ def spotify_callback(code: str, state: str = None, user_id: str = None):
     Handle the redirect from Spotify, exchange code for tokens, and store them.
     """
     try:
-        if not code:
-            raise Exception("No code provided in callback.")
+        # Use state as user_id if user_id is not provided
+        if not user_id and state:
+            user_id = state
+        if not code or not user_id:
+            raise Exception("No code or user_id provided in callback.")
         from src.functions.helpers.sp_provider import SpotifyProvider
-        # You may need to extract user_id from state or session if you use it
         sp = SpotifyProvider(user_id)
         token_info = sp.handle_callback(code)
-        # Optionally, redirect to frontend with a success message
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
         return RedirectResponse(url=f"{frontend_url}/spotify-auth-success?user_id={user_id}")
     except Exception as e:
