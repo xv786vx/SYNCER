@@ -5,7 +5,7 @@ A Chrome extension and web app to sync your Spotify and YouTube playlists, built
 ## 🌐 Live Links & Dashboards
 
 - **Website:** [https://syncer-web-three.vercel.app](https://syncer-26vh.onrender.com)
-- **Chrome Extension Releases:** [GitHub Releases](https://github.com/yourusername/yourrepo/releases)
+- **Chrome Extension Releases:** [GitHub Releases](https://github.com/xv786vx/SYNCER/releases)
 - **Backend API:** [https://syncer-26vh.onrender.com](https://syncer-26vh.onrender.com)
 - **Spotify Developer Dashboard:** [Spotify Dashboard](https://developer.spotify.com/dashboard/applications)
 - **Google Cloud Console:** [Google Cloud Console](https://console.cloud.google.com/)
