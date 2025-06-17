@@ -1,6 +1,7 @@
 # SYNCER
 
 A Chrome extension and web app to sync your Spotify and YouTube playlists, built with a modern backend and frontend stack.
+## Currently its not on the Chrome Store (will be up within the next 2-6 weeks), so if you'd like to use it, shoot me an email @ firas.aj76@gmail.com with your Google account so I can register it for use!
 
 ## 🌐 Live Links & Dashboards
 
