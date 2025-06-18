@@ -66,6 +66,9 @@ function App() {
   const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
 
+  // New: Ready to sync if both Spotify and YouTube are authenticated
+  const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
+
   // Fade in effect on tab change
   const quotaExceeded = quota && quota.total >= quota.limit;
   useEffect(() => {
@@ -512,59 +515,63 @@ function App() {
       flexDirection: 'row'
     }}>
       <ToastContainer />
-      {/* Overlay logic: Show Song Sync Status overlay for SP->YT or YT->SP, else show Processes overlay if any, with fade for processes */}
+      {/* Overlay logic: Only show overlays if ready to sync */}
       <AnimatePresence>
-        {showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && songs.length > 0 ? (
-          <motion.div
-            key="song-sync-status-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="absolute inset-0 z-40"
-          >
-            <SongSyncStatus
-              songs={songs}
-              onManualSearch={handleManualSearch}
-              onSkip={handleSkip}
-              onFinalize={handleFinalize}
-              finalizing={finalizing}
-              setFinalizing={setFinalizing}
-            />
-          </motion.div>
-        ) : showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && ytToSpSongs.length > 0 ? (
-          <motion.div
-            key="yt-song-sync-status-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="absolute inset-0 z-40"
-          >
-            <SongSyncStatus
-              songs={ytToSpSongs}
-              onManualSearch={handleManualSearchYtToSp}
-              onSkip={handleSkipYtToSp}
-              onFinalize={handleFinalizeYtToSp}
-              finalizing={finalizing}
-              setFinalizing={setFinalizing}
-            />
-          </motion.div>
-        ) : (!showSongSyncStatusOverlay && processes.length > 0 && showProcessesOverlay) ? (
-          <motion.div
-            key="processes-overlay"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="absolute inset-0 z-40"
-          >
-            <ProcessesOverlay
-              processes={processes}
-              onDismiss={dismissProcesses}
-            />
-          </motion.div>
-        ) : null}
+        {isReadyToSync && (
+          <>
+            {showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && songs.length > 0 ? (
+              <motion.div
+                key="song-sync-status-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-40"
+              >
+                <SongSyncStatus
+                  songs={songs}
+                  onManualSearch={handleManualSearch}
+                  onSkip={handleSkip}
+                  onFinalize={handleFinalize}
+                  finalizing={finalizing}
+                  setFinalizing={setFinalizing}
+                />
+              </motion.div>
+            ) : showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && ytToSpSongs.length > 0 ? (
+              <motion.div
+                key="yt-song-sync-status-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-40"
+              >
+                <SongSyncStatus
+                  songs={ytToSpSongs}
+                  onManualSearch={handleManualSearchYtToSp}
+                  onSkip={handleSkipYtToSp}
+                  onFinalize={handleFinalizeYtToSp}
+                  finalizing={finalizing}
+                  setFinalizing={setFinalizing}
+                />
+              </motion.div>
+            ) : (!showSongSyncStatusOverlay && processes.length > 0 && showProcessesOverlay) ? (
+              <motion.div
+                key="processes-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-40"
+              >
+                <ProcessesOverlay
+                  processes={processes}
+                  onDismiss={dismissProcesses}
+                />
+              </motion.div>
+            ) : null}
+          </>
+        )}
       </AnimatePresence>
 
       {/* Sidebar */}
@@ -637,7 +644,6 @@ function App() {
         >
           {quotaExceeded ? (
             <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="text-3xl font-bold mb-2">yabba dabba doo!</div>
               <div className="text-lg mb-4">YouTube API quota exhausted</div>
               <div className="text-sm mb-2">Quota resets in:</div>
               <div className="text-2xl font-mono mb-4">{formatMs(countdown)}</div>
@@ -645,10 +651,33 @@ function App() {
             </div>
           ) : (
             <>
-              {displayedTab === "1" && userId && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId as string} ensureYoutubeAuth={ensureYoutubeAuth} />}
-              {displayedTab === "2" && userId && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId as string} ensureYoutubeAuth={ensureYoutubeAuth} />}
-              {displayedTab === "3" && userId && <MergePlaylists onMerge={handleMergePlaylists} userId={userId as string} ensureYoutubeAuth={ensureYoutubeAuth} />}
-              {displayedTab === "4" && userId && <DownloadSong onDownload={handleDownloadSong} userId={userId as string} />}
+              {!isReadyToSync ? (
+                <div className="flex flex-col items-center justify-center h-full text-center">
+                  <div className="text-md mb-4">Please authenticate with both Spotify and YouTube to continue.</div>
+                  <button
+                    className="mb-2 px-4 py-2 bg-green-700 hover:bg-green-600 rounded text-white"
+                    onClick={ensureSpotifyAuth}
+                    disabled={!!isSpotifyAuthenticated}
+                  >
+                    {isSpotifyAuthenticated ? "Spotify Authenticated" : "Authenticate Spotify"}
+                  </button>
+                  <button
+                    className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-white"
+                    onClick={ensureYoutubeAuth}
+                    disabled={!!isYoutubeAuthenticated}
+                  >
+                    {isYoutubeAuthenticated ? "YouTube Authenticated" : "Authenticate YouTube"}
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* add ensureYoutubeAuth={ensureYoutubeAuth} back as a prop in the following lines for robustness */}
+                  {displayedTab === "1" && userId && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId as string} />}
+                  {displayedTab === "2" && userId && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId as string} />}
+                  {displayedTab === "3" && userId && <MergePlaylists onMerge={handleMergePlaylists} userId={userId as string} />}
+                  {displayedTab === "4" && userId && <DownloadSong onDownload={handleDownloadSong} userId={userId as string} />}
+                </>
+              )}
             </>
           )}
         </motion.div>

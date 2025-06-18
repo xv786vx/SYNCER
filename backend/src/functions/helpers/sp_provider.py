@@ -6,6 +6,9 @@ from .provider import tokenize, preprocess_title, fuzzy_match, is_match
 
 import os
 from dotenv import load_dotenv
+from .spotify_db_cache import DatabaseCacheHandler
+from src.db.spotify_token import get_spotify_token
+import json
 
 load_dotenv()
 
@@ -15,10 +18,6 @@ sp_client_secret = os.getenv("SP_CLIENT_SECRET")
 class SpotifyProvider(Provider):
     def __init__(self, user_id: str):
         self.user_id = user_id
-        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-        token_dir = os.path.join(root_dir, 'auth_tokens')
-        os.makedirs(token_dir, exist_ok=True) # Ensure the directory exists
-        self.cache_path = os.path.join(token_dir, f'.cache_{user_id}')
         self.client_id = sp_client_id
         self.client_secret = sp_client_secret
 
@@ -39,15 +38,13 @@ class SpotifyProvider(Provider):
         self.sp = None  # Will be set after authentication
 
     def get_auth_manager(self):
-        """Return a SpotifyOAuth object configured."""
-        # Ensure cache_path directory exists
-        os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
+        """Return a SpotifyOAuth object configured to use the database cache handler."""
         return SpotifyOAuth(
             client_id=self.client_id,
             client_secret=self.client_secret,
             redirect_uri=self.redirect_uri,
             scope=self.scope,
-            cache_path=self.cache_path,
+            cache_handler=DatabaseCacheHandler(self.user_id),
             show_dialog=True # Force show dialog every time for debugging
         )
 
@@ -316,23 +313,24 @@ class SpotifyProvider(Provider):
         #return playlist
 
 def is_spotify_authenticated(user_id):
-    import os
-    root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
-    token_dir = os.path.join(root_dir, 'auth_tokens')
-    cache_path = os.path.join(token_dir, f'.cache_{user_id}')
-    if not os.path.exists(cache_path):
-        print(f"[SpotifyToken] No token cache found for user_id: {user_id}")
+    token_json = get_spotify_token(user_id)
+    if not token_json:
+        print(f"[SpotifyToken] No token found in database for user_id: {user_id}")
         return False
     try:
-        with open(cache_path, 'r') as f:
-            token_data = f.read()
-            if 'access_token' in token_data:
-                print(f"[SpotifyToken] Found valid token for user_id: {user_id}")
-                return True
-            else:
-                print(f"[SpotifyToken] Token cache for user_id: {user_id} does not contain access_token")
-                return False
+        token_info = json.loads(token_json)
+        # Check for access_token and expiry
+        if 'access_token' not in token_info:
+            print(f"[SpotifyToken] Token for user_id: {user_id} does not contain access_token")
+            return False
+        # Optionally check if token is expired
+        import time
+        if 'expires_at' in token_info and token_info['expires_at'] < int(time.time()):
+            print(f"[SpotifyToken] Token for user_id: {user_id} is expired")
+            return False
+        print(f"[SpotifyToken] Found valid token for user_id: {user_id}")
+        return True
     except Exception as e:
-        print(f"[SpotifyToken] Error reading token cache for user_id: {user_id}: {e}")
+        print(f"[SpotifyToken] Error parsing token for user_id: {user_id}: {e}")
         return False
 

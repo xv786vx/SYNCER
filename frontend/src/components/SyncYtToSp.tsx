@@ -5,10 +5,9 @@ import { APIErrorHandler } from '../utils/errorHandling';
 interface SyncYtToSpProps {
   onSync: (playlistName: string, userId: string) => Promise<void>;
   userId: string;
-  ensureYoutubeAuth: () => Promise<void>;
 }
 
-export function SyncYtToSp({ onSync, userId, ensureYoutubeAuth }: SyncYtToSpProps) {
+export function SyncYtToSp({ onSync, userId }: SyncYtToSpProps) {
   const [ytPlaylist, setYtPlaylist] = useState('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
@@ -20,7 +19,7 @@ export function SyncYtToSp({ onSync, userId, ensureYoutubeAuth }: SyncYtToSpProp
     
     try {
       setIsCheckingAuth(true);
-      await ensureYoutubeAuth();
+      console.log('Syncing Youtube playlist:', ytPlaylist);
       await onSync(ytPlaylist, userId);
       setYtPlaylist('');
     } catch (error) {
