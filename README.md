@@ -1,11 +1,16 @@
+<div align="center">
+<img src="frontend/public/icon128.png" width="100" alt="SYNCER Logo" />
+
 # SYNCER
 
-A Chrome extension and web app to sync your Spotify and YouTube playlists, built with a modern backend and frontend stack.
+A Chrome extension that lets you sync and merge your Spotify and YouTube playlists seamlessly — powered by FastAPI, React, and Docker and deployed with Render and Vercel.
+## Currently its not on the Chrome Store (will be up within the next 2-6 weeks), so if you'd like to use it, shoot me an email @ firas.aj76@gmail.com with your Google account so I can register it for use!
+</div>
 
 ## 🌐 Live Links & Dashboards
 
 - **Website:** [https://syncer-web-three.vercel.app](https://syncer-26vh.onrender.com)
-- **Chrome Extension Releases:** [GitHub Releases](https://github.com/yourusername/yourrepo/releases)
+- **Chrome Extension Releases:** [GitHub Releases](https://github.com/xv786vx/SYNCER/releases)
 - **Backend API:** [https://syncer-26vh.onrender.com](https://syncer-26vh.onrender.com)
 - **Spotify Developer Dashboard:** [Spotify Dashboard](https://developer.spotify.com/dashboard/applications)
 - **Google Cloud Console:** [Google Cloud Console](https://console.cloud.google.com/)
@@ -72,5 +77,5 @@ Pull requests are welcome! For major changes, please open an issue first to disc
 
 ## 🆘 Support
 
-- For issues, open a [GitHub Issue](https://github.com/yourusername/yourrepo/issues).
-- For questions, contact [your email or Discord].
+- For issues, open a [GitHub Issue](https://github.com/xv786vx/SYNCER/issues).
+- For questions, contact firas.aj76@gmail.com.
