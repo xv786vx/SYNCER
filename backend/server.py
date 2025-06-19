@@ -7,10 +7,18 @@ from pydantic import BaseModel, ValidationError
 from typing import List, Optional, Dict, Any
 import logging
 from datetime import datetime
-sys.path.append(os.path.join(os.path.dirname(__file__), 'functions'))
+from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
 from fastapi import Body
+from google_auth_oauthlib.flow import Flow
+from fastapi import Depends
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker, Session
+
+load_dotenv()
+sys.path.append(os.path.join(os.path.dirname(__file__), 'functions'))
+
 from src.functions.sync_yt_to_sp import sync_yt_to_sp
 from src.functions.sync_sp_to_yt import sync_sp_to_yt
 from src.functions.merge_playlists import merge_playlists
@@ -18,8 +26,20 @@ from src.functions.download_yt_song import download_yt_song
 from src.functions.helpers.yt_provider import YoutubeProvider
 from src.functions.helpers.sp_provider import SpotifyProvider, is_spotify_authenticated
 from src.functions.helpers.quota_tracker import get_total_quota_used, set_total_quota_value, YT_API_QUOTA_COSTS, quota_usage
-from google_auth_oauthlib.flow import Flow
 from src.db.youtube_token import save_youtube_token, get_youtube_token, is_youtube_authenticated
+from src.db.youtube_quota import YoutubeQuota, increment_quota, get_total_quota_used, set_total_quota_value
+
+
+DATABASE_URL = os.environ["DATABASE_URL"]
+engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
 
 # Create logs directory if it doesn't exist
 logs_dir = os.path.join(os.path.dirname(__file__), 'logs')
@@ -171,11 +191,10 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 # api usage endpoint
 @app.get("/api/youtube_quota_usage")
-def youtube_quota_usage():
-    from src.functions.helpers.quota_tracker import get_total_quota_used
+def youtube_quota_usage(db: Session = Depends(get_db)):
     # The quota limit is typically 10,000 for YouTube Data API v3
     YT_API_DAILY_LIMIT = 10000
-    used = get_total_quota_used()
+    used = get_total_quota_used(db)
     return {
         "total": used,
         "limit": YT_API_DAILY_LIMIT
@@ -183,9 +202,9 @@ def youtube_quota_usage():
 
 # Endpoint to set quota value manually
 @app.post("/api/set_youtube_quota")
-def set_youtube_quota(quota_value: int = Body(...)):
+def set_youtube_quota(quota_value: int = Body(...), db: Session = Depends(get_db)):
     try:
-        set_total_quota_value(quota_value)
+        set_total_quota_value(db, quota_value)
         return {"status": "success", "message": f"YouTube API quota set to {quota_value}"}
     except Exception as e:
         logger.error(f"Error setting YouTube quota: {str(e)}")
@@ -230,12 +249,12 @@ def authenticate():
         raise AuthenticationError("Failed to authenticate user")
 
 @app.get("/api/sync_yt_to_sp")
-def api_sync_yt_to_sp(playlist_name: str):
+def api_sync_yt_to_sp(playlist_name: str, db: Session = Depends(get_db)):
     if not playlist_name:
         raise ValidationError("Playlist name is required")
     
     try:
-        results = sync_yt_to_sp(playlist_name)
+        results = sync_yt_to_sp(playlist_name, db)
         if not results:
             raise ResourceNotFoundError(f"No songs found in playlist: {playlist_name}")
         return {
@@ -264,7 +283,7 @@ def finalize_yt_to_sp(playlist_name: str = Body(...), sp_ids: list = Body(...), 
         raise APIError(f"Failed to finalize sync: {str(e)}")
 
 @app.get("/api/sync_sp_to_yt")
-def api_sync_sp_to_yt(playlist_name: str, user_id: str):
+def api_sync_sp_to_yt(playlist_name: str, user_id: str, db: Session = Depends(get_db)):
     if not playlist_name:
         raise ValidationError("Playlist name is required")
 
@@ -276,7 +295,7 @@ def api_sync_sp_to_yt(playlist_name: str, user_id: str):
             "playlist": playlist_name,
             "songs": []
         }
-        results = sync_sp_to_yt(playlist_name, sp)
+        results = sync_sp_to_yt(playlist_name, sp, db)
         if not results:
             raise ResourceNotFoundError(f"No songs found in playlist: {playlist_name}")
         # Mark sync as ready to finalize
@@ -301,16 +320,16 @@ def api_sync_sp_to_yt(playlist_name: str, user_id: str):
         raise APIError(f"Failed to sync playlist: {str(e)}")
 
 @app.post("/api/finalize_sp_to_yt")
-def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), user_id: str = Body(...)):
+def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), user_id: str = Body(...), db: Session = Depends(get_db)):
     if not playlist_name or not yt_ids or not user_id:
         raise ValidationError("Playlist name, song IDs, and user_id are required")
     try:
         yt = YoutubeProvider(user_id)
-        pl_info = yt.get_playlist_by_name(playlist_name)
+        pl_info = yt.get_playlist_by_name(playlist_name, db)
         if pl_info is None:
-            pl_info = yt.create_playlist(playlist_name)
+            pl_info = yt.create_playlist(playlist_name, db)
         playlist_id = pl_info['id']
-        yt.add_to_playlist(playlist_id, yt_ids)
+        yt.add_to_playlist(playlist_id, yt_ids, db)
         # Mark sync as finalized
         sync_status_store[user_id] = {
             "stage": "finalized",
@@ -329,12 +348,12 @@ def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), 
         raise APIError(f"Failed to finalize sync: {str(e)}")
 
 @app.get("/api/merge_playlists")
-def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str, user_id: str):
+def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str, user_id: str, db: Session = Depends(get_db)):
     if not yt_playlist or not sp_playlist or not user_id:
         raise ValidationError("Both playlist names and user_id are required")
     
     try:
-        result = merge_playlists(yt_playlist, sp_playlist, merge_name, user_id)
+        result = merge_playlists(yt_playlist, sp_playlist, merge_name, user_id, db)
         return {"status": "success", "result": result}
     except Exception as e:
         logger.error(f"Error merging playlists: {str(e)}")
@@ -536,21 +555,3 @@ def get_sync_status(user_id: str):
     if not status:
         return {"stage": "idle"}
     return status
-
-# @app.post("/api/test_save_youtube_token")
-# def test_save_youtube_token(user_id: str, token_json: str):
-#     """Test endpoint to save a YouTube token for a user_id."""
-#     try:
-#         save_youtube_token(user_id, token_json)
-#         return {"status": "success", "user_id": user_id}
-#     except Exception as e:
-#         return {"status": "error", "error": str(e)}
-
-# @app.get("/api/test_get_youtube_token")
-# def test_get_youtube_token(user_id: str):
-#     """Test endpoint to get a YouTube token for a user_id."""
-#     try:
-#         token = get_youtube_token(user_id)
-#         return {"user_id": user_id, "token_json": token}
-#     except Exception as e:
-#         return {"status": "error", "error": str(e)}

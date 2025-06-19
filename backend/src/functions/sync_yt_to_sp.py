@@ -2,12 +2,12 @@ from src.functions.helpers.sp_provider import SpotifyProvider
 from src.functions.helpers.yt_provider import YoutubeProvider
 
 
-def sync_yt_to_sp(playlist_to_modify, user_id=None):
+def sync_yt_to_sp(playlist_to_modify, db, user_id=None):
     yt = YoutubeProvider(user_id)
     sp = SpotifyProvider(user_id)
 
 
-    pl_info = yt.get_playlist_by_name(playlist_to_modify)
+    pl_info = yt.get_playlist_by_name(playlist_to_modify, db)
     if pl_info is None:
         print(f"Could not find or access playlist '{playlist_to_modify}'")
         return
@@ -22,7 +22,7 @@ def sync_yt_to_sp(playlist_to_modify, user_id=None):
 
     # 4. Add each song from youtube to spotify playlist
     print(f"(Step 2) Syncing {pl_info['title']}, {pl_info['id']} to Spotify...")
-    t_to_sync_yt = yt.get_playlist_items(pl_info['id'])
+    t_to_sync_yt = yt.get_playlist_items(pl_info['id'], db)
 
     t_to_sync_sp = []
     for track in t_to_sync_yt:

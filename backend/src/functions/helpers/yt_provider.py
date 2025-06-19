@@ -1,3 +1,5 @@
+import os
+from dotenv import load_dotenv
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
@@ -6,19 +8,13 @@ from google.auth.transport.requests import Request
 import yt_dlp
 from youtubesearchpython import VideosSearch
 import json
-import uuid  # Import the uuid module
-
 from .provider import Provider
 from .provider import preprocess_title, fuzzy_match
-
-from .quota_tracker import increment_quota
-# Import database helper functions
-from src.db.youtube_token import get_youtube_token, save_youtube_token
-
-import os
-from dotenv import load_dotenv
-
 load_dotenv()
+from src.db.youtube_token import get_youtube_token, save_youtube_token
+from src.db.youtube_quota import increment_quota
+
+
 
 yt_client_id = os.getenv("YT_CLIENT_ID")
 yt_project_id = os.getenv("YT_PROJECT_ID")
@@ -317,14 +313,16 @@ class YoutubeProvider(Provider):
             return None
         
     
-    def get_playlists(self):
+    def get_playlists(self, db):
         self._check_authenticated()
         """Obtains a list of the user's Youtube playlists"""
         try: # Add try...except here for detailed error on this specific call
             print("Attempting to execute self.youtube.playlists().list...")
             request = self.youtube.playlists().list(part="snippet", mine=True, maxResults=50) # Added maxResults
 
-            increment_quota("playlists.list")  # playlists.list costs 1 unit
+            # increment_quota("playlists.list")  # playlists.list costs 1 unit
+            increment_quota(db, count=1)
+
 
             response = request.execute()
             print(f"Successfully executed playlists().list. Found {len(response.get('items', []))} items.")
@@ -344,7 +342,7 @@ class YoutubeProvider(Provider):
              return None # Return None on error
     
 
-    def get_playlist_by_name(self, playlist_name):
+    def get_playlist_by_name(self, playlist_name, db):
         self._check_authenticated()
         """given a Youtube playlist name, return the playlist's information.
 
@@ -354,7 +352,7 @@ class YoutubeProvider(Provider):
         Returns:
             dict: {'title': playlist name, 'id': playlist id, 'description': playlist description, 'image': playlist image}
         """
-        playlists = self.get_playlists()
+        playlists = self.get_playlists(db)
         if playlists is None:
             print(f"Could not retrieve playlists. Please check your authorization.")
             return None
@@ -370,7 +368,7 @@ class YoutubeProvider(Provider):
         return None 
 
 
-    def get_playlist_items(self, playlist_id):
+    def get_playlist_items(self, playlist_id, db):
         self._check_authenticated()
         """Given a Youtube playlist id, return the track's title, artists and id of each track in the playlist.
 
@@ -386,7 +384,8 @@ class YoutubeProvider(Provider):
         while request:
             response = request.execute()
 
-            increment_quota("playlistItems.list")  # playlistItems.list costs 1 unit
+            # increment_quota("playlistItems.list")  # playlistItems.list costs 1 unit
+            increment_quota(db, count=1)
             
             # Add the current batch of items to the playlist_items list
             playlist_items.extend([
@@ -404,7 +403,7 @@ class YoutubeProvider(Provider):
         return playlist_items
     
 
-    def add_to_playlist(self, playlist_id, item_ids) -> None:
+    def add_to_playlist(self, playlist_id, item_ids, db) -> None:
         self._check_authenticated()
         """add a list of videos (through id) to a Youtube playlist.
 
@@ -430,10 +429,11 @@ class YoutubeProvider(Provider):
             )
             request.execute()
 
-            increment_quota("playlistItems.insert")
+            # increment_quota("playlistItems.insert")
+            increment_quota(db, count=50)
     
 
-    def create_playlist(self, playlist_name):
+    def create_playlist(self, playlist_name, db):
         self._check_authenticated()
         """creates a YouTube playlist with the given name.
 
@@ -457,7 +457,8 @@ class YoutubeProvider(Provider):
         )
         response = request.execute()
 
-        increment_quota("playlists.insert")
+        # increment_quota("playlists.insert")
+        increment_quota(db, count=50)
 
         print(f"Created YouTube playlist: {response['snippet']['title']} with ID: {response['id']}")
         return response
