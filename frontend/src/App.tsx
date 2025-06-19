@@ -20,6 +20,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import Dither from "./components/Dither";
 import { startYoutubeOAuth } from './utils/apiClient';
 import { getOrCreateUserId } from './utils/userId';
+import { usePersistentState } from './utils/usePersistentState';
 
 function getMsUntilMidnightEST() {
   // Get current time in UTC
@@ -47,21 +48,16 @@ function App() {
   const [userId, setUserId] = useState<string | null>(null);
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
   const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState("1");
-  const [displayedTab, setDisplayedTab] = useState("1"); // controls which tab's content is shown
-  const [processes, setProcesses] = useState<Process[]>([])
-  const [songs, setSongs] = useState<SongStatus[]>([])
-  const [ytToSpSongs, setYtToSpSongs] = useState<SongStatus[]>([])
-  const [syncedSpPlaylist, setSyncedSpPlaylist] = useState('')
-  const [syncedYtPlaylist, setSyncedYtPlaylist] = useState('')
+  const [activeTab, setActiveTab] = usePersistentState<string>('activeTab', "1");
+  const [displayedTab, setDisplayedTab] = usePersistentState<string>('displayedTab', "1"); // controls which tab's content is shown
+  const [processes, setProcesses] = usePersistentState<Process[]>('processes', [])
+  const [songs, setSongs] = usePersistentState<SongStatus[]>('songs', [])
+  const [ytToSpSongs, setYtToSpSongs] = usePersistentState<SongStatus[]>('ytToSpSongs', [])
+  const [syncedSpPlaylist, setSyncedSpPlaylist] = usePersistentState<string>('syncedSpPlaylist', '')
   const [toast, setToast] = useState<string | null>(null)
   const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
   const [tabFade, setTabFade] = useState(true);
-  const [showProcessesOverlay, setShowProcessesOverlay] = useState(false);
-  const [showSongSyncStatusOverlay, setShowSongSyncStatusOverlay] = useState(false);
-  // Add state for fade-out of SongSyncStatus overlay
-  const [isSongSyncStatusFadingOut, setIsSongSyncStatusFadingOut] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
@@ -76,38 +72,6 @@ function App() {
     const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
     return () => clearTimeout(timeout);
   }, [activeTab, quotaExceeded]);
-
-  // Fade-in logic for Processes overlay
-  useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    if (processes.length > 0 && songs.length === 0 && ytToSpSongs.length === 0) {
-      setShowProcessesOverlay(false); // Reset to false immediately
-      timeout = setTimeout(() => {
-        setShowProcessesOverlay(true); // Trigger fade-in after short delay
-      }, 50); // 50ms delay before fade-in
-    } else {
-      setShowProcessesOverlay(false); // Hide immediately when no processes or when SongSyncStatus is about to show
-    }
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [processes.length, songs.length, ytToSpSongs.length]);
-
-  // --- Fade-in logic for SongSyncStatus overlay ---
-  useEffect(() => {
-    let timeout: ReturnType<typeof setTimeout> | null = null;
-    if ((songs.length > 0 || ytToSpSongs.length > 0) && !isSongSyncStatusFadingOut) {
-      setShowSongSyncStatusOverlay(false);
-      timeout = setTimeout(() => {
-        setShowSongSyncStatusOverlay(true);
-      }, 200); // 200ms delay for fade-in
-    } else if (!isSongSyncStatusFadingOut) {
-      setShowSongSyncStatusOverlay(false);
-    }
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [songs.length, ytToSpSongs.length, isSongSyncStatusFadingOut]);
 
   const fetchQuota = async () => {
       try {
@@ -178,11 +142,15 @@ function App() {
     }
   };
   const handleSyncYtToSp = async (playlistName: string, userId: string) => {
-    if (!userId) return;
+    if (!userId || !playlistName) {
+      alert('Missing data for syncYtToSp: ' + JSON.stringify({playlistName, userId}));
+      return;
+    }
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
     const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
     try {
+      console.log('Syncing YT to SP with:', 'playlistName:', playlistName, 'userId:', userId);
       const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
       if (data.songs) {
         for (let i = 0; i < data.songs.length; i++) {
@@ -195,7 +163,6 @@ function App() {
           await new Promise(res => setTimeout(res, 150));
         }
         setYtToSpSongs(data.songs);
-        setSyncedYtPlaylist(playlistName);
         updateProcess(processId, 'completed', 'Sync complete!');
         setToast(data.message || 'Sync complete!');
         fetchQuota();
@@ -206,9 +173,13 @@ function App() {
     }
   };
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
-    if (!userId) return;
+    if (!userId || !ytPlaylist || !spPlaylist || !mergeName) {
+      alert('Missing data for mergePlaylists: ' + JSON.stringify({ytPlaylist, spPlaylist, mergeName, userId}));
+      return;
+    }
     const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
     try {
+      console.log('Merging playlists with:', 'ytPlaylist:', ytPlaylist, 'spPlaylist:', spPlaylist, 'mergeName:', mergeName, 'userId:', userId);
       const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
       if (data.result) {
         setToast(data.result);
@@ -261,65 +232,52 @@ function App() {
     );
   };
 
+  // Helper: Determine which overlay to show
+  const getOverlayState = () => {
+    if ((songs.length > 0 || ytToSpSongs.length > 0) && finalizing) {
+      return 'spinner'; // Show spinner overlay
+    } else if (songs.length > 0) {
+      return 'songSyncStatus';
+    } else if (ytToSpSongs.length > 0) {
+      return 'ytToSpSongSyncStatus';
+    } else if (processes.length > 0) {
+      return 'processes';
+    } else {
+      return null;
+    }
+  };
+  const overlayState = getOverlayState();
+
+  // On mount, ensure overlays reflect process state
+  // (No need to persist overlay state)
+  // If you want to poll backend for status, add here
+  // useEffect(() => { ... }, []);
+
+  // Remove setShowProcessesOverlay, setShowSongSyncStatusOverlay, setIsSongSyncStatusFadingOut, setFinalizing
+  // Instead, update finalizing as needed in finalize handlers only
+
   // --- Minimal fade-out for SongSyncStatus overlay ---
-  const handleFinalize = async () => {
+  const handleFinalizeSpToYt = async () => {
     if (!userId) return;
     setFinalizing(true);
     // Actually finalize the sync and update state BEFORE fade-out
     const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
+    console.log('Finalizing sync with:', 'playlist:', syncedSpPlaylist, 'ytIds:', ytIds, 'userId:', userId);
+    if (!syncedSpPlaylist || !ytIds.length || !userId) {
+      alert('Missing data for finalize: ' + JSON.stringify({syncedSpPlaylist, ytIds, userId}));
+      setFinalizing(false);
+      return;
+    }
     const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId) as { message?: string };
     setToast(data.message || 'Sync complete!');
     setFinalizing(false); // triggers spinner fade-out
-    setIsSongSyncStatusFadingOut(true);
-    setShowSongSyncStatusOverlay(false); // triggers overlay fade-out
     setTimeout(() => {
       setSongs([]);
       setSyncedSpPlaylist('');
-      setIsSongSyncStatusFadingOut(false);
     }, 150); // overlay fade-out duration
   };
 
-  const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
-    if (!userId) return;
-    const data = await API.manualSearchYtToSp(song.name, song.artist, userId) as { status: string; sp_id?: string };
-    setYtToSpSongs(prev =>
-      prev.map((s, i) =>
-        i === idx
-          ? data.status === 'found'
-            ? { ...s, status: 'found', sp_id: data.sp_id, requires_manual_search: false }
-            : s
-          : s
-      )
-    );
-  };
-
-  const handleSkipYtToSp = (_song: SongStatus, idx: number) => {
-    setYtToSpSongs(prev =>
-      prev.map((s, i) =>
-        i === idx
-          ? { ...s, status: 'skipped', requires_manual_search: false }
-          : s
-      )
-    );
-  };
-
-  const handleFinalizeYtToSp = async () => {
-    if (!userId) return;
-    setFinalizing(true);
-    // Actually finalize the sync and update state BEFORE fade-out
-    const spIds = ytToSpSongs.filter(s => s.status === 'found' && s.sp_id).map(s => s.sp_id!);
-    const data = await API.finalizeYtToSp(syncedYtPlaylist, spIds, userId) as { message?: string };
-    setToast(data.message || 'Sync complete!');
-    setFinalizing(false); // triggers spinner fade-out
-    setIsSongSyncStatusFadingOut(true);
-    setShowSongSyncStatusOverlay(false); // triggers overlay fade-out
-    setTimeout(() => {
-      setYtToSpSongs([]);
-      setSyncedYtPlaylist('');
-      setIsSongSyncStatusFadingOut(false);
-    }, 150); // overlay fade-out duration
-  };
-
+  // Remove dismissProcesses overlay state, just clear processes
   const dismissProcesses = () => setProcesses([]);
 
   useEffect(() => {
@@ -392,12 +350,40 @@ function App() {
       }, 150); // match duration-200
       return () => clearTimeout(timeout);
     }
-  }, [tabFade, pendingTab, activeTab]); 
+  }, [tabFade, pendingTab, activeTab, setActiveTab, setDisplayedTab]); 
 
   // On mount, get or create userId
   useEffect(() => {
     getOrCreateUserId().then(setUserId);
   }, []);
+
+  // On mount or when userId changes, poll backend for sync status and update UI state
+  useEffect(() => {
+    if (!userId) return;
+    const fetchSyncStatus = async () => {
+      try {
+        const status = await API.getSyncStatus(userId) as { stage: string; playlist?: string; songs?: SongStatus[]; error?: string };
+        if (status.stage === 'finding') {
+          setProcesses([{ id: 'sync', type: 'sync', status: 'in-progress', message: `Syncing ${status.playlist}...` }]);
+          setSongs([]);
+          setYtToSpSongs([]);
+        } else if (status.stage === 'ready_to_finalize') {
+          setProcesses([]);
+          setSongs(status.songs || []);
+          setYtToSpSongs([]);
+        } else if (status.stage === 'finalized' || status.stage === 'idle') {
+          setProcesses([]);
+          setSongs([]);
+          setYtToSpSongs([]);
+        } else if (status.stage === 'error') {
+          setProcesses([{ id: 'sync', type: 'sync', status: 'error', message: status.error || 'Sync error' }]);
+        }
+      } catch {
+        // Ignore errors for now
+      }
+    };
+    fetchSyncStatus();
+  }, [userId, setProcesses, setSongs, setYtToSpSongs]);
 
   // Only check auth and trigger OAuth if userId is loaded
   useEffect(() => {
@@ -496,6 +482,30 @@ function App() {
     }
   };
 
+  const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
+    if (!userId) return;
+    const data = await API.manualSearchYtToSp(song.name, song.artist, userId) as { status: string; sp_id?: string };
+    setYtToSpSongs(prev =>
+      prev.map((s, i) =>
+        i === idx
+          ? data.status === 'found'
+            ? { ...s, status: 'found', sp_id: data.sp_id, requires_manual_search: false }
+            : s
+          : s
+      )
+    );
+  };
+
+  const handleSkipYtToSp = (_song: SongStatus, idx: number) => {
+    setYtToSpSongs(prev =>
+      prev.map((s, i) =>
+        i === idx
+          ? { ...s, status: 'skipped', requires_manual_search: false }
+          : s
+      )
+    );
+  };
+
   if (!userId) {
     // Show a loading spinner or message until userId is loaded
     return (
@@ -519,9 +529,9 @@ function App() {
       <AnimatePresence>
         {isReadyToSync && (
           <>
-            {showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && songs.length > 0 ? (
+            {(songs.length > 0 || ytToSpSongs.length > 0) ? (
               <motion.div
-                key="song-sync-status-overlay"
+                key={songs.length > 0 ? "song-sync-status-overlay" : "yt-song-sync-status-overlay"}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -529,33 +539,15 @@ function App() {
                 className="absolute inset-0 z-40"
               >
                 <SongSyncStatus
-                  songs={songs}
-                  onManualSearch={handleManualSearch}
-                  onSkip={handleSkip}
-                  onFinalize={handleFinalize}
+                  songs={songs.length > 0 ? songs : ytToSpSongs}
+                  onManualSearch={songs.length > 0 ? handleManualSearch : handleManualSearchYtToSp}
+                  onSkip={songs.length > 0 ? handleSkip : handleSkipYtToSp}
+                  onFinalize={handleFinalizeSpToYt}
                   finalizing={finalizing}
                   setFinalizing={setFinalizing}
                 />
               </motion.div>
-            ) : showSongSyncStatusOverlay && !isSongSyncStatusFadingOut && ytToSpSongs.length > 0 ? (
-              <motion.div
-                key="yt-song-sync-status-overlay"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 z-40"
-              >
-                <SongSyncStatus
-                  songs={ytToSpSongs}
-                  onManualSearch={handleManualSearchYtToSp}
-                  onSkip={handleSkipYtToSp}
-                  onFinalize={handleFinalizeYtToSp}
-                  finalizing={finalizing}
-                  setFinalizing={setFinalizing}
-                />
-              </motion.div>
-            ) : (!showSongSyncStatusOverlay && processes.length > 0 && showProcessesOverlay) ? (
+            ) : overlayState === 'processes' ? (
               <motion.div
                 key="processes-overlay"
                 initial={{ opacity: 0 }}

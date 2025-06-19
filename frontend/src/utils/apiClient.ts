@@ -283,3 +283,12 @@ export async function startSpotifyOAuth(userId: string) {
     throw new Error("Failed to get Spotify OAuth URL");
   }
 }
+
+// Get sync status for a user
+export async function getSyncStatus(userId: string) {
+  const url = `${API_BASE_URL}/api/sync_status?user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to get sync status");
+}

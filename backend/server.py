@@ -50,6 +50,9 @@ app = FastAPI()
 # TEMPORARY SESSION STORE (replace with DB or secure storage in production)
 session_store = {"authenticated": False}
 
+# In-memory sync status store (per user)
+sync_status_store = {}
+
 # Check if we're in CORS dev mode (more permissive settings)
 chrome_extension_id = os.getenv("CHROME_EXTENSION_ID", "default_extension_id")
 cors_dev_mode = os.environ.get("CORS_DEV_MODE", "false").lower() == "true"
@@ -267,22 +270,40 @@ def api_sync_sp_to_yt(playlist_name: str, user_id: str):
 
     try:
         sp = SpotifyProvider(user_id)  # Pass user_id to SpotifyProvider
+        # Mark sync as started (finding)
+        sync_status_store[user_id] = {
+            "stage": "finding",
+            "playlist": playlist_name,
+            "songs": []
+        }
         results = sync_sp_to_yt(playlist_name, sp)
         if not results:
             raise ResourceNotFoundError(f"No songs found in playlist: {playlist_name}")
+        # Mark sync as ready to finalize
+        sync_status_store[user_id] = {
+            "stage": "ready_to_finalize",
+            "playlist": playlist_name,
+            "songs": results
+        }
         return {
             'playlist': playlist_name,
             'songs': results
         }
     except Exception as e:
         logger.error(f"Error syncing Spotify to YouTube: {str(e)}")
+        # Mark sync as error
+        sync_status_store[user_id] = {
+            "stage": "error",
+            "playlist": playlist_name,
+            "songs": [],
+            "error": str(e)
+        }
         raise APIError(f"Failed to sync playlist: {str(e)}")
 
 @app.post("/api/finalize_sp_to_yt")
 def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), user_id: str = Body(...)):
     if not playlist_name or not yt_ids or not user_id:
         raise ValidationError("Playlist name, song IDs, and user_id are required")
-    
     try:
         yt = YoutubeProvider(user_id)
         pl_info = yt.get_playlist_by_name(playlist_name)
@@ -290,9 +311,21 @@ def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), 
             pl_info = yt.create_playlist(playlist_name)
         playlist_id = pl_info['id']
         yt.add_to_playlist(playlist_id, yt_ids)
+        # Mark sync as finalized
+        sync_status_store[user_id] = {
+            "stage": "finalized",
+            "playlist": playlist_name,
+            "songs": []
+        }
         return {"status": "success", "message": f"Playlist '{playlist_name}' created/updated with {len(yt_ids)} songs."}
     except Exception as e:
         logger.error(f"Error finalizing Spotify to YouTube sync: {str(e)}")
+        sync_status_store[user_id] = {
+            "stage": "error",
+            "playlist": playlist_name,
+            "songs": [],
+            "error": str(e)
+        }
         raise APIError(f"Failed to finalize sync: {str(e)}")
 
 @app.get("/api/merge_playlists")
@@ -496,6 +529,13 @@ def youtube_auth_status(user_id: str):
     except Exception as e:
         logger.error(f"Error checking YouTube auth status for user_id {user_id}: {str(e)}")
         return {"authenticated": False}
+
+@app.get("/api/sync_status")
+def get_sync_status(user_id: str):
+    status = sync_status_store.get(user_id)
+    if not status:
+        return {"stage": "idle"}
+    return status
 
 # @app.post("/api/test_save_youtube_token")
 # def test_save_youtube_token(user_id: str, token_json: str):
