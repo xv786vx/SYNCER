@@ -134,8 +134,8 @@ function App() {
         }
         setSongs(data.songs);
         setSyncedSpPlaylist(playlistName);
-        updateProcess(processId, 'completed', 'Sync complete!');
-        setToast(data.message || 'Sync complete!');
+        // Remove the process from the list now that the main task is done
+        setProcesses(prev => prev.filter(p => p.id !== processId));
         fetchQuota();
       }
     } catch (error) {
@@ -165,8 +165,7 @@ function App() {
           await new Promise(res => setTimeout(res, 150));
         }
         setYtToSpSongs(data.songs);
-        updateProcess(processId, 'completed', 'Sync complete!');
-        setToast(data.message || 'Sync complete!');
+        setProcesses(prev => prev.filter(p => p.id !== processId));
         fetchQuota();
       }
     } catch (e) {
@@ -185,8 +184,7 @@ function App() {
       const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
       if (data.result) {
         setToast(data.result);
-        updateProcess(processId, 'completed', 'Playlists merged successfully!');
-        removeProcess(processId);
+        setProcesses(prev => prev.filter(p => p.id !== processId));
         fetchQuota();
       }
     } catch (error) {
@@ -287,10 +285,14 @@ function App() {
         return;
     }
     
+    const processId = addProcess('finalize', `Finalizing sync for "${syncedSpPlaylist}"...`);
     try {
       await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId);
+      updateProcess(processId, 'completed', 'Sync complete!');
+      removeProcess(processId); // Automatically removes after a 2-second delay
       setToast('Playlist finalized successfully!');
     } catch (error) {
+      updateProcess(processId, 'error', 'Failed to finalize sync');
       APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
     } finally {
       setSongs([]);
