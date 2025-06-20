@@ -363,33 +363,26 @@ def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str, use
 
 @app.get("/api/download_yt_song")
 def api_download_yt_song(song_name: str, artists: str, user_id: str):
-    if not song_name or not artists or not user_id:
-        raise ValidationError("Song name, artists, and user_id are required")
-    
-    try:
-        result = download_yt_song(song_name, artists, user_id)
-        return {"status": "success", "result": result}
-    except Exception as e:
-        logger.error(f"Error downloading YouTube song: {str(e)}")
-        raise APIError(f"Failed to download song: {str(e)}")
+    logger.info(f"Downloading YouTube song: {song_name} by {artists} for user {user_id}")
+    result = download_yt_song(song_name, artists, user_id)
+    return {"result": result}
 
 @app.get("/api/manual_search_sp_to_yt")
 def manual_search_sp_to_yt(song: str, artist: str, user_id: str):
-    if not song or not artist or not user_id:
-        raise ValidationError("Song name, artist, and user_id are required")
+    logger.info(f"Manual search for '{song}' by '{artist}' for user_id: {user_id}")
+    if not user_id:
+        raise HTTPException(status_code=400, detail="user_id is required")
     try:
         yt = YoutubeProvider(user_id)
-        result = yt.search_manual(song, artist)
-        if result:
-            return {"status": "found", "yt_id": result}
-        else:
-            return {"status": "not_found"}
+        results = yt.search_manual(song, artist)
+        return JSONResponse(content=results)
     except Exception as e:
-        logger.error(f"Error in manual search Spotify to YouTube: {str(e)}")
-        raise APIError(f"Failed to perform manual search: {str(e)}")
+        logger.error(f"Error during manual search for user {user_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail="Failed to perform manual search")
 
 @app.get("/api/manual_search_yt_to_sp")
 def manual_search_yt_to_sp(song: str, artist: str, user_id: str):
+    logger.info(f"Manual search for '{song}' by '{artist}' for user_id: {user_id}")
     if not song or not artist or not user_id:
         raise ValidationError("Song name, artist, and user_id are required")
     try:

@@ -15,6 +15,7 @@ import { DownloadSong } from './components/DownloadSong';
 import { SongSyncStatus } from './components/SongSyncStatus';
 import { ToastContainer } from './components/Toast';
 import { ToastNotification } from './components/ToastNotification';
+import { ManualSearchModal, ManualSearchResult } from './components/ManualSearchModal';
 import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
 import { motion, AnimatePresence } from 'framer-motion'
 import Dither from "./components/Dither";
@@ -61,6 +62,7 @@ function App() {
   const [finalizing, setFinalizing] = useState(false);
   const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
+  const [manualSearchSong, setManualSearchSong] = useState<SongStatus | null>(null);
 
   // New: Ready to sync if both Spotify and YouTube are authenticated
   const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
@@ -208,24 +210,32 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to download song');
     }
   };
-  const handleManualSearch = async (song: SongStatus, idx: number) => {
-    if (!userId) return;
-    const data = await API.manualSearchSpToYt(song.name, song.artist, userId) as { status: string; yt_id?: string };
+  const handleManualSearch = (song: SongStatus) => {
+    setManualSearchSong(song);
+  };
+
+  const handleSelectManualSearch = (originalSong: SongStatus, newSongDetails: ManualSearchResult) => {
     setSongs(prev =>
-      prev.map((s, i) =>
-        i === idx
-          ? data.status === 'found'
-            ? { ...s, status: 'found', yt_id: data.yt_id, requires_manual_search: false }
-            : s
+      prev.map(s =>
+        s.name === originalSong.name && s.artist === originalSong.artist
+          ? {
+              ...s,
+              status: 'found',
+              yt_id: newSongDetails.yt_id,
+              yt_title: newSongDetails.title,
+              yt_artist: newSongDetails.artist,
+              requires_manual_search: false,
+            }
           : s
       )
     );
+    setManualSearchSong(null);
   };
 
-  const handleSkip = (_song: SongStatus, idx: number) => {
+  const handleSkip = (songToSkip: SongStatus) => {
     setSongs(prev =>
-      prev.map((s, i) =>
-        i === idx
+      prev.map((s) =>
+        s.name === songToSkip.name && s.artist === songToSkip.artist
           ? { ...s, status: 'skipped', requires_manual_search: false }
           : s
       )
@@ -258,23 +268,35 @@ function App() {
 
   // --- Minimal fade-out for SongSyncStatus overlay ---
   const handleFinalizeSpToYt = async () => {
-    if (!userId) return;
-    setFinalizing(true);
-    // Actually finalize the sync and update state BEFORE fade-out
-    const ytIds = songs.filter(s => s.status === 'found' && s.yt_id).map(s => s.yt_id!);
-    console.log('Finalizing sync with:', 'playlist:', syncedSpPlaylist, 'ytIds:', ytIds, 'userId:', userId);
-    if (!syncedSpPlaylist || !ytIds.length || !userId) {
-      alert('Missing data for finalize: ' + JSON.stringify({syncedSpPlaylist, ytIds, userId}));
-      setFinalizing(false);
+    setFinalizing(true); // Set finalizing at the beginning
+
+    if (!userId || !syncedSpPlaylist) {
+      alert('Missing data for finalize: ' + JSON.stringify({syncedSpPlaylist, ytIds: songs.filter(s => s.status === 'found').map(s => s.yt_id), userId}));
+      setFinalizing(false); // Reset on failure
       return;
     }
-    const data = await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId) as { message?: string };
-    setToast(data.message || 'Sync complete!');
-    setFinalizing(false); // triggers spinner fade-out
-    setTimeout(() => {
+
+    const ytIds = songs
+      .filter(s => s.status === 'found' && s.yt_id)
+      .map(s => s.yt_id) as string[];
+
+    if (!ytIds.length) {
+        alert("No songs were found to sync.");
+        setSongs([]);
+        setFinalizing(false);
+        return;
+    }
+    
+    try {
+      await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId);
+      setToast('Playlist finalized successfully!');
+    } catch (error) {
+      APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
+    } finally {
       setSongs([]);
-      setSyncedSpPlaylist('');
-    }, 150); // overlay fade-out duration
+      setFinalizing(false);
+      fetchQuota();
+    }
   };
 
   // Remove dismissProcesses overlay state, just clear processes
@@ -544,7 +566,6 @@ function App() {
                   onSkip={songs.length > 0 ? handleSkip : handleSkipYtToSp}
                   onFinalize={handleFinalizeSpToYt}
                   finalizing={finalizing}
-                  setFinalizing={setFinalizing}
                 />
               </motion.div>
             ) : overlayState === 'processes' ? (
@@ -681,6 +702,17 @@ function App() {
           isFading={toastFading} 
         />
       )}
+      <AnimatePresence>
+        {manualSearchSong && (
+          <ManualSearchModal
+            song={manualSearchSong}
+            onClose={() => setManualSearchSong(null)}
+            onSelectSong={handleSelectManualSearch}
+            manualSearchApi={API.manualSearchSpToYt}
+            userId={userId!}
+          />
+        )}
+      </AnimatePresence>
     </div>
   )
 }

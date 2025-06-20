@@ -18,21 +18,10 @@
  *    - Remote backend (https://syncer-26vh.onrender.com) for production
  */
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
+import { ManualSearchResult } from "../components/ManualSearchModal";
 
 // Base URL configuration
-const API_BASE_URL = "https://syncer-26vh.onrender.com"; // Remote backend - PRODUCTION
-//const API_BASE_URL = "http://localhost:8000"; // Local backend for development
-
-// Common fetch options to use for all requests
-const defaultFetchOptions: RequestInit = {
-  method: "GET",
-  mode: "cors",
-  credentials: "include", // Important for authentication cookies
-  headers: {
-    "Content-Type": "application/json",
-    Accept: "application/json",
-  },
-};
+const API_BASE_URL = "https://syncer-26vh.onrender.com";
 
 // Generic function for API requests - using direct calls with CORS headers
 async function fetchApi(
@@ -40,10 +29,9 @@ async function fetchApi(
   options: RequestInit = {}
 ): Promise<Response> {
   const fetchOptions = {
-    ...defaultFetchOptions,
     ...options,
     headers: {
-      ...defaultFetchOptions.headers,
+      "Content-Type": "application/json",
       ...options.headers,
     },
   };
@@ -93,12 +81,16 @@ export async function manualSearchSpToYt(
   song: string,
   artist: string,
   userId: string
-) {
+): Promise<ManualSearchResult[]> {
   const url = `${API_BASE_URL}/api/manual_search_sp_to_yt?song=${encodeURIComponent(song)}&artist=${encodeURIComponent(artist)}&user_id=${encodeURIComponent(userId)}`;
-  return withErrorHandling(async () => {
+
+  const result = await withErrorHandling(async () => {
     const response = await fetchApi(url);
-    return APIErrorHandler.handleResponse(response);
+    const data = await APIErrorHandler.handleResponse(response);
+    return data as ManualSearchResult[];
   }, "Failed to perform manual search");
+
+  return result || [];
 }
 
 // Get auto-matched songs for YouTube → Spotify

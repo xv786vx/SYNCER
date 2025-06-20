@@ -36,6 +36,8 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db):
                 "artist": artists,
                 "status": "found",
                 "yt_id": result[0],
+                "yt_title": result[3],
+                "yt_artist": result[4],
                 "requires_manual_search": False
             })
         else:

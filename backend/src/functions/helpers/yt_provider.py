@@ -288,7 +288,7 @@ class YoutubeProvider(Provider):
             return None
 
         
-    def search_manual(self, track_name, artists) -> str:
+    def search_manual(self, track_name, artists) -> list:
         """given a user's input, manually search for a track on Youtube.
 
         Args:
@@ -296,7 +296,7 @@ class YoutubeProvider(Provider):
             artists (str): a user's dsired artist name (WIP INPUTTING MULTIPLE ARTISTS).
 
         Returns:
-            str: returns ONLY the Youtube video id if a suitable match is found, else None.
+            list: returns a list of potential matches, each a dict with video details.
         """
 
         clean_sp_title = preprocess_title(track_name, artists)
@@ -305,12 +305,19 @@ class YoutubeProvider(Provider):
         search = VideosSearch(query, limit=6)
         response = search.result().get('result', [])
 
+        results = []
         if response:
-            item = response[0]
-            return item['id']
+            for item in response:
+                results.append({
+                    "yt_id": item['id'],
+                    "title": item['title'],
+                    "artist": item['channel']['name'],
+                    "thumbnail": item['thumbnails'][0]['url']
+                })
+            return results
         else:
             print("err: no items returned")
-            return None
+            return []
         
     
     def get_playlists(self, db):

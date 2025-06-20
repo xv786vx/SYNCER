@@ -1,11 +1,14 @@
-export type SongStatus = {
+export interface SongStatus {
   name: string;
   artist: string;
-  status: "found" | "not_found" | "skipped";
-  yt_id?: string; // For Spotify → YouTube
-  sp_id?: string; // For YouTube → Spotify
-  requires_manual_search?: boolean;
-};
+  status: "found" | "not_found" | "skipped" | "in-progress";
+  yt_id?: string | null;
+  yt_title?: string;
+  yt_artist?: string;
+  sp_id?: string | null;
+  requires_manual_search: boolean;
+  coverUrl?: string; // Optional cover art URL
+}
 
 export interface Process {
   id: string;

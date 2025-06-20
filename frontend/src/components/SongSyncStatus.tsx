@@ -10,20 +10,22 @@ interface SongWithCover extends SongStatus {
 
 interface SongSyncStatusProps {
   songs?: SongWithCover[];
-  onManualSearch?: (song: SongWithCover, idx: number) => Promise<void>;
+  onManualSearch?: (song: SongWithCover, idx: number) => void;
   onSkip?: (song: SongWithCover, idx: number) => void;
   onFinalize: () => Promise<void>;
   finalizing: boolean;
-  setFinalizing: (v: boolean) => void;
 }
 
 export function SongSyncStatus({
   songs = [],
+  onManualSearch,
+  onSkip,
   onFinalize,
   finalizing,
-  setFinalizing,
 }: SongSyncStatusProps) {
   const [focusedIdx, setFocusedIdx] = useState(0);
+  const itemHeight = 112; // Increased item height for more breathing room
+  const containerHeight = itemHeight * 2; // Show 2.5 items to hint at scrollability
   const listRef = useRef<HTMLDivElement>(null);
 
   // Scroll to the focused item on mount or when songs or focusedIdx change
@@ -47,10 +49,14 @@ export function SongSyncStatus({
   }
 
   const handleFinalizeClick = async () => {
-    setFinalizing(true);
+    // Parent component (`App.tsx`) will now handle setting this state.
+    // setFinalizing(true);
     await onFinalize();
-    // setFinalizing(false); // Parent will handle fade-out and reset
   };
+  
+  const focusedSong = songs[focusedIdx];
+  const showNotFoundActionButtons = focusedSong?.status === 'not_found';
+  const showFoundActionButtons = focusedSong?.status === 'found';
 
   return (
     <div className="absolute z-50 bg-black bg-opacity-85 top-0 left-0 w-[360px] h-[360px] flex items-center justify-center">
@@ -80,11 +86,11 @@ export function SongSyncStatus({
             >
               <div className="relative w-full mb-2">
                 <div
-                  className="w-[182px] rounded bg-none mb-2 hide-scrollbar flex flex-col items-stretch justify-center"
+                  className="w-[260px] mx-auto rounded bg-none mb-2 hide-scrollbar flex flex-col items-stretch justify-center"
                   style={{
-                    height: '192px',
-                    maxHeight: '192px',
-                    minHeight: '40px',
+                    height: `${containerHeight}px`,
+                    maxHeight: `${containerHeight}px`,
+                    minHeight: `${itemHeight}px`,
                     overflow: 'hidden',
                     position: 'relative',
                   }}
@@ -99,54 +105,96 @@ export function SongSyncStatus({
                     const firstIdx = focusedIdx - centerSlot + emptyAbove;
                     const slots = [];
                     for (let i = 0; i < emptyAbove; i++) {
-                      slots.push(<div key={"empty-above-"+i} style={{ minHeight: '72px', height: '72px' }} />);
+                      slots.push(<div key={"empty-above-"+i} style={{ minHeight: `${itemHeight}px`, height: `${itemHeight}px` }} />);
                     }
                     for (let i = 0; i < totalSlots - emptyAbove - emptyBelow; i++) {
                       const idx = firstIdx + i;
                       if (idx < 0 || idx >= songs.length) {
-                        slots.push(<div key={"empty-"+idx} style={{ minHeight: '72px', height: '72px' }} />);
+                        slots.push(<div key={"empty-"+idx} style={{ minHeight: `${itemHeight}px`, height: `${itemHeight}px` }} />);
                       } else {
                         const song = songs[idx];
+                        const isFocused = idx === focusedIdx;
                         slots.push(
                           <div
                             key={idx}
-                            className={`flex items-center gap-3 px-3 py-2 cursor-pointer transition-all duration-200 ${
-                              idx === focusedIdx
-                                ? 'bg-brand-green-dark text-white min-h-[72px]' // focused
-                                : 'text-gray-400 hover:bg-neutral-800 min-h-[40px]'
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-all duration-300 ease-in-out rounded-lg ${
+                              isFocused
+                                ? 'bg-brand-green-dark text-white' // focused
+                                : 'text-gray-400 hover:bg-neutral-800'
                             }`}
-                            style={{ fontSize: idx === focusedIdx ? '1.1rem' : '1rem', minHeight: '72px', height: '72px' }}
+                            style={{
+                              fontSize: isFocused ? '1.1rem' : '1rem',
+                              minHeight: `${itemHeight}px`,
+                              height: `${itemHeight}px`,
+                              opacity: isFocused ? 1 : 0.8,
+                              transform: isFocused ? 'scale(1)' : 'scale(0.9)',
+                              zIndex: isFocused ? 10 : 1
+                            }}
                             onClick={() => setFocusedIdx(idx)}
                           >
-                            {idx === focusedIdx && song.coverUrl && (
+                            {isFocused && song.coverUrl && (
                               <img
                                 src={song.coverUrl}
                                 alt="cover"
                                 className="w-12 h-12 rounded shadow-md object-cover"
                               />
                             )}
-                            <div>
-                              <div className="font-semibold truncate max-w-[160px]">{song.name}</div>
-                              <div className="text-xs opacity-70 truncate max-w-[160px]">{song.artist}</div>
+                            <div className="flex-1">
+                              <div className="text-sm font-semibold truncate max-w-[200px]">{song.name}</div>
+                              <div className="text-xs opacity-70 truncate max-w-[200px]">{song.artist}</div>
+                              {isFocused && song.yt_title && (
+                                <div className="mt-1 border-t border-white pt-1">
+                                  <p className="text-xs text-yellow-400 truncate max-w-[200px]">Matched:</p>
+                                  <p className="text-sm font-semibold text-white truncate max-w-[200px]">{song.yt_title}</p>
+                                  <p className="text-xs text-gray-300 truncate max-w-[200px]">{song.yt_artist}</p>
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
                       }
                     }
                     for (let i = 0; i < emptyBelow; i++) {
-                      slots.push(<div key={"empty-below-"+i} style={{ minHeight: '72px', height: '72px' }} />);
+                      slots.push(<div key={"empty-below-"+i} style={{ minHeight: `${itemHeight}px`, height: `${itemHeight}px` }} />);
                     }
                     return slots;
                   })()}
                 </div>
               </div>
-              <button
-                className="px-4 py-2 bg-brand-green-dark hover:bg-brand-green rounded mx-auto block text-sm font-semibold"
-                onClick={handleFinalizeClick}
-                disabled={finalizing}
-              >
-                Finalize Sync
-              </button>
+
+              <div className="mb-2 flex items-center justify-center gap-4">
+                {showNotFoundActionButtons && (
+                  <>
+                    <button
+                      className="text-sm bg-blue-600 hover:bg-blue-500 text-white px-3 py-1 rounded"
+                      onClick={() => onManualSearch?.(focusedSong, focusedIdx)}
+                    >
+                      Search
+                    </button>
+                    <button
+                      className="text-sm bg-gray-600 hover:bg-gray-500 text-white px-3 py-1 rounded"
+                      onClick={() => onSkip?.(focusedSong, focusedIdx)}
+                    >
+                      Skip
+                    </button>
+                  </>
+                )}
+                {showFoundActionButtons && (
+                  <button
+                    className="text-sm bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded"
+                    onClick={() => onManualSearch?.(focusedSong, focusedIdx)}
+                  >
+                    Change
+                  </button>
+                )}
+                <button
+                  className="px-4 py-2 bg-brand-green-dark hover:bg-brand-green rounded text-sm font-semibold"
+                  onClick={handleFinalizeClick}
+                  disabled={finalizing}
+                >
+                  Finalize Sync
+                </button>
+              </div>
             </motion.div>
           )}
         </AnimatePresence>
