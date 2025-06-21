@@ -35,12 +35,17 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
               className={`text-sm p-3 rounded-lg text-center ${
                 process.status === 'completed' ? 'bg-green-900' :
                 process.status === 'error' ? 'bg-red-900' :
-                process.status === 'in-progress' ? 'bg-none' :
+                process.status === 'in-progress' || process.status === 'pending' ? 'bg-none' :
                 'bg-neutral-700'
               }`}
             >
               <div className="flex flex-col items-center justify-center">
                 <span className="font-medium text-center">{process.message}</span>
+                {process.subMessage && (
+                  <span className="font-light text-xs text-neutral-300 text-center mt-1">
+                    {process.subMessage}
+                  </span>
+                )}
                 {process.status === 'in-progress' && (
                   <div className="mt-3 mb-1 flex flex-col items-center">
                     <LoadingSpinner size={48} color="#fff" />

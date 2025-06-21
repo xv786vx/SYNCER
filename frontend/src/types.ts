@@ -15,6 +15,9 @@ export interface Process {
   type: string;
   status: "pending" | "in-progress" | "completed" | "error";
   message: string;
+  subMessage?: string;
+  playlistName?: string; // Optional: for countdown message
+  countdownEnd?: number | undefined; // Optional: timestamp for countdown end
   interactive?: {
     type: "search" | "skip";
     songName: string;

@@ -47,6 +47,30 @@ export async function getThing(url: string) {
   }, "Failed to fetch data");
 }
 
+// Get number of tracks in a Spotify playlist
+export async function getSpPlaylistTrackCount(
+  playlistName: string,
+  userId: string
+): Promise<{ track_count: number } | null> {
+  const url = `${API_BASE_URL}/api/sp_playlist_track_count?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to get Spotify playlist track count");
+}
+
+// Get number of tracks in a YouTube playlist
+export async function getYtPlaylistTrackCount(
+  playlistName: string,
+  userId: string
+): Promise<{ track_count: number } | null> {
+  const url = `${API_BASE_URL}/api/yt_playlist_track_count?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to get YouTube playlist track count");
+}
+
 // Get auto-matched songs for Spotify → YouTube
 export async function syncSpToYt(playlistName: string, userId: string) {
   const url = `${API_BASE_URL}/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;

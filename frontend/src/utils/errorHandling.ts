@@ -11,10 +11,19 @@ export interface APIError {
 export class APIErrorHandler {
   static async handleResponse<T>(response: Response): Promise<T> {
     if (!response.ok) {
-      const errorData = (await response.json()) as APIError;
-      throw new Error(errorData.error.message || "An error occurred");
+      try {
+        const errorData = (await response.json()) as APIError;
+        const message =
+          errorData?.error?.message || `API Error: ${response.statusText}`;
+        throw new Error(message);
+      } catch {
+        // If parsing JSON fails or error is not in expected format
+        throw new Error(`API Error: ${response.status} ${response.statusText}`);
+      }
     }
-    return response.json();
+    // Handle cases where the response is empty (e.g., 204 No Content)
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
   }
 
   static handleError(
@@ -22,14 +31,18 @@ export class APIErrorHandler {
     fallbackMessage: string = "An error occurred"
   ): void {
     console.error("API Error:", error);
-    toast.error(error.message || fallbackMessage, {
-      position: "bottom-right",
-      autoClose: 5000,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
-    });
+    const message = error.message || fallbackMessage;
+    // Avoid showing "API Error: Not Found" as a toast
+    if (!message.includes("Not Found")) {
+      toast.error(message, {
+        position: "bottom-right",
+        autoClose: 5000,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    }
   }
 }
 

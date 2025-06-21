@@ -86,16 +86,23 @@ function App() {
     };
   
 
-  const addProcess = (type: string, message: string) => {
+  const addProcess = (type: string, message: string, extra: Partial<Omit<Process, 'id' | 'type' | 'status' | 'message'>> = {}) => {
     const id = Date.now().toString();
-    setProcesses(prev => [...prev, { id, type, status: 'pending', message }]);
+    setProcesses(prev => [...prev, { id, type, status: 'pending', message, ...extra }]);
     return id;
   };
 
   const updateProcess = (id: string, status: Process['status'], message?: string, interactive?: Process['interactive']) => {
-    setProcesses(prev => prev.map(p => 
-      p.id === id ? { ...p, status, message: message || p.message, interactive } : p
-    ));
+    setProcesses(prev => {
+      const process = prev.find(p => p.id === id);
+      // Only update if the message or status has changed
+      if (process && process.status === status && process.message === message) {
+        return prev;
+      }
+      return prev.map(p =>
+        p.id === id ? { ...p, status, message: message || p.message, interactive } : p
+      );
+    });
   };
 
   const removeProcess = (id: string) => {
@@ -116,54 +123,70 @@ function App() {
     if (!userId) return;
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
-    console.log('Syncing Spotify playlist:', playlistName);
-    const processId = addProcess('sync', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
-    updateProcess(processId, 'in-progress', `Syncing Spotify playlist "${playlistName}" to YouTube...`);
+
+    const processId = addProcess('sync', `Preparing to sync "${playlistName}"...`);
+
     try {
+      // Get track count for estimation
+      const countData = await API.getSpPlaylistTrackCount(playlistName, userId);
+      
+      if (!countData) {
+        // Handle playlist not found case
+        updateProcess(processId, 'error', `Playlist "${playlistName}" not found.`);
+        return; // Stop execution
+      }
+
+      const trackCount = countData.track_count;
+      const estimatedTime = 5 + 3 * trackCount;
+      const countdownEnd = Date.now() + estimatedTime * 1000;
+
+      // Update the existing process with countdown info
+      setProcesses(prev => prev.map(p => 
+        p.id === processId 
+          ? { ...p, playlistName, countdownEnd, status: 'in-progress' as Process['status'] } 
+          : p
+      ));
+      
       const data = await API.syncSpToYt(playlistName, userId) as APIResponse;
+
       if (data.songs) {
-        for (let i = 0; i < data.songs.length; i++) {
-          const song = data.songs[i];
-          updateProcess(
-            processId,
-            'in-progress',
-            `Syncing "${song.name} by ${song.artist}" (${i + 1}/${data.songs.length})`
-          );
-          // Simulate per-song sync delay (remove this if backend is already per-song)
-          await new Promise(res => setTimeout(res, 150)); // 150ms per song for demo
-        }
         setSongs(data.songs);
         setSyncedSpPlaylist(playlistName);
-        // Remove the process from the list now that the main task is done
         setProcesses(prev => prev.filter(p => p.id !== processId));
         fetchQuota();
       }
     } catch (error) {
-      updateProcess(processId, 'error', 'Failed to sync playlist');
+      updateProcess(processId, 'error', `Failed to sync "${playlistName}"`);
       APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
   const handleSyncYtToSp = async (playlistName: string, userId: string) => {
-    if (!userId || !playlistName) {
-      alert('Missing data for syncYtToSp: ' + JSON.stringify({playlistName, userId}));
-      return;
-    }
+    if (!userId || !playlistName) return;
+
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
-    const processId = addProcess('sync', `Syncing YouTube playlist "${playlistName}" to Spotify...`);
+
+    const processId = addProcess('sync', `Preparing to sync "${playlistName}"...`);
+    
     try {
-      console.log('Syncing YT to SP with:', 'playlistName:', playlistName, 'userId:', userId);
+      const countData = await API.getYtPlaylistTrackCount(playlistName, userId);
+      if (!countData) {
+        updateProcess(processId, 'error', `Playlist "${playlistName}" not found.`);
+        return;
+      }
+
+      const trackCount = countData.track_count;
+      const estimatedTime = 5 + 3 * trackCount;
+      const countdownEnd = Date.now() + estimatedTime * 1000;
+
+      setProcesses(prev => prev.map(p => 
+        p.id === processId 
+          ? { ...p, playlistName, countdownEnd, status: 'in-progress' as Process['status'] } 
+          : p
+      ));
+
       const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
       if (data.songs) {
-        for (let i = 0; i < data.songs.length; i++) {
-          const song = data.songs[i];
-          updateProcess(
-            processId,
-            'in-progress',
-            `Syncing "${song.name} by ${song.artist}" (${i + 1}/${data.songs.length})`
-          );
-          await new Promise(res => setTimeout(res, 150));
-        }
         setYtToSpSongs(data.songs);
         setProcesses(prev => prev.filter(p => p.id !== processId));
         fetchQuota();
@@ -174,13 +197,39 @@ function App() {
     }
   };
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
-    if (!userId || !ytPlaylist || !spPlaylist || !mergeName) {
-      alert('Missing data for mergePlaylists: ' + JSON.stringify({ytPlaylist, spPlaylist, mergeName, userId}));
-      return;
-    }
-    const processId = addProcess('merge', `Merging playlists "${ytPlaylist}" and "${spPlaylist}"...`);
+    if (!userId || !ytPlaylist || !spPlaylist || !mergeName) return;
+
+    await ensureSpotifyAuth();
+    await ensureYoutubeAuth();
+    
+    const processId = addProcess('merge', `Preparing to merge "${ytPlaylist}" and "${spPlaylist}"...`);
+    
     try {
-      console.log('Merging playlists with:', 'ytPlaylist:', ytPlaylist, 'spPlaylist:', spPlaylist, 'mergeName:', mergeName, 'userId:', userId);
+      const [ytCountData, spCountData] = await Promise.all([
+        API.getYtPlaylistTrackCount(ytPlaylist, userId),
+        API.getSpPlaylistTrackCount(spPlaylist, userId)
+      ]);
+
+      if (!ytCountData) {
+        updateProcess(processId, 'error', `YouTube playlist "${ytPlaylist}" not found.`);
+        return;
+      }
+      if (!spCountData) {
+        updateProcess(processId, 'error', `Spotify playlist "${spPlaylist}" not found.`);
+        return;
+      }
+
+      const totalTracks = ytCountData.track_count + spCountData.track_count;
+      const estimatedTime = 5 + 3 * totalTracks;
+      const countdownEnd = Date.now() + estimatedTime * 1000;
+      
+      const mergePlaylistName = `"${ytPlaylist}" & "${spPlaylist}"`;
+      setProcesses(prev => prev.map(p => 
+        p.id === processId 
+          ? { ...p, playlistName: mergePlaylistName, countdownEnd, status: 'in-progress' as Process['status'] } 
+          : p
+      ));
+
       const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
       if (data.result) {
         setToast(data.result);
@@ -387,10 +436,20 @@ function App() {
     const fetchSyncStatus = async () => {
       try {
         const status = await API.getSyncStatus(userId) as { stage: string; playlist?: string; songs?: SongStatus[]; error?: string };
+        
         if (status.stage === 'finding') {
-          setProcesses([{ id: 'sync', type: 'sync', status: 'in-progress', message: `Syncing ${status.playlist}...` }]);
+          // Use a functional update to get the latest state without adding `processes` to deps
+          setProcesses(currentProcesses => {
+              // If a sync is already running with a countdown, don't overwrite it.
+              if (currentProcesses.some(p => p.type === 'sync' && p.countdownEnd)) {
+                  return currentProcesses;
+              }
+              // Otherwise, update from backend status
+              return [{ id: 'sync', type: 'sync', status: 'in-progress', message: `Syncing ${status.playlist}...` }];
+          });
           setSongs([]);
           setYtToSpSongs([]);
+
         } else if (status.stage === 'ready_to_finalize') {
           setProcesses([]);
           setSongs(status.songs || []);
@@ -529,6 +588,41 @@ function App() {
       )
     );
   };
+
+  // Countdown effect for processes
+  useEffect(() => {
+    const interval = setInterval(() => {
+      processes.forEach(p => {
+        if (p.countdownEnd && p.status === 'in-progress') {
+          const remaining = Math.round((p.countdownEnd - Date.now()) / 1000);
+          let message: string;
+          let subMessage: string | undefined;
+          let newCountdownEnd: number | undefined = p.countdownEnd;
+
+          if (remaining > 0) {
+            message = `Syncing "${p.playlistName}"...`;
+            subMessage = `(Estimated time: ${remaining}s)`;
+          } else {
+            message = `Still working on "${p.playlistName}"... (try refreshing the extension)`;
+            newCountdownEnd = undefined; // Stop the countdown
+          }
+
+          // Only update if message or countdownEnd has changed
+          if (message !== p.message || subMessage !== p.subMessage || newCountdownEnd !== p.countdownEnd) {
+            setProcesses(prev =>
+              prev.map(proc =>
+                proc.id === p.id
+                  ? { ...proc, message, subMessage, countdownEnd: newCountdownEnd }
+                  : proc
+              )
+            );
+          }
+        }
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [processes, setProcesses]);
 
   if (!userId) {
     // Show a loading spinner or message until userId is loaded

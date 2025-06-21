@@ -15,6 +15,7 @@ from google_auth_oauthlib.flow import Flow
 from fastapi import Depends
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, Session
+from spotipy.oauth2 import SpotifyOauthError
 
 load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), 'functions'))
@@ -213,6 +214,43 @@ def set_youtube_quota(quota_value: int = Body(...), db: Session = Depends(get_db
 @app.get("/api/testing")
 def testing():
     return {"message": "Testing endpoint is working"}
+
+@app.get("/api/sp_playlist_track_count")
+def get_sp_playlist_track_count(playlist_name: str, user_id: str):
+    try:
+        sp = SpotifyProvider(user_id)
+        if not is_spotify_authenticated(user_id):
+            raise AuthenticationError("Spotify is not authenticated.")
+        
+        count = sp.get_playlist_track_count(playlist_name)
+        
+        if count is None:
+            raise ResourceNotFoundError(f"Playlist '{playlist_name}' not found.")
+            
+        return {"track_count": count}
+    except SpotifyOauthError as e:
+        logger.error(f"Spotify auth error for user {user_id}: {e}")
+        raise AuthenticationError("Spotify authentication failed.")
+    except Exception as e:
+        logger.error(f"Error getting track count for playlist '{playlist_name}' for user {user_id}: {e}")
+        raise APIError("Failed to get playlist track count.")
+
+@app.get("/api/yt_playlist_track_count")
+def get_yt_playlist_track_count(playlist_name: str, user_id: str, db: Session = Depends(get_db)):
+    try:
+        if not is_youtube_authenticated(user_id):
+            raise AuthenticationError("YouTube is not authenticated.")
+        
+        yt = YoutubeProvider(user_id)
+        count = yt.get_playlist_track_count(playlist_name, db)
+        
+        if count is None:
+            raise ResourceNotFoundError(f"Playlist '{playlist_name}' not found.")
+            
+        return {"track_count": count}
+    except Exception as e:
+        logger.error(f"Error getting YT track count for playlist '{playlist_name}' for user {user_id}: {e}")
+        raise APIError("Failed to get YouTube playlist track count.")
 
 @app.options("/api/cors_test")
 @app.get("/api/cors_test")

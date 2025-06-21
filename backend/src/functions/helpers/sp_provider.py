@@ -225,30 +225,44 @@ class SpotifyProvider(Provider):
     
 
     def get_playlist_by_name(self, playlist_name):
-        """given a Spotify playlist name, return the playlist's information.
-
-        Args:
-            playlist_name (str): a playlist name to search for.
-
-        Returns:
-            dict: {'title': playlist name, 'id': playlist id, 'description': playlist description, 'image': playlist image}
-        """
+        """given a Spotify playlist name, return the playlist's information."""
         self.ensure_client()
         
         playlists = self.sp.current_user_playlists()
-        for pl in playlists['items']:
-            if pl['name'].lower() == playlist_name.lower():  # Case-insensitive comparison
-                return {
-                    'title': pl['name'],
-                    'id': pl['id'],
-                    'description': pl.get('description', ''),
-                    'image': pl['images'][0]['url'] if pl.get('images') else 'No Image',
-                }
+        while playlists:
+            for pl in playlists['items']:
+                if pl['name'].lower() == playlist_name.lower():  # Case-insensitive comparison
+                    return {
+                        'title': pl['name'],
+                        'id': pl['id'],
+                        'description': pl.get('description', ''),
+                        'image': pl['images'][0]['url'] if pl.get('images') else 'No Image',
+                    }
+            if playlists['next']:
+                playlists = self.sp.next(playlists)
+            else:
+                playlists = None
         return None  # Return None if playlist not found
     
 
+    def get_playlist_track_count(self, playlist_name):
+        """given a Spotify playlist name, return the number of tracks."""
+        self.ensure_client()
+        
+        playlists = self.sp.current_user_playlists()
+        while playlists:
+            for pl in playlists['items']:
+                if pl['name'].lower() == playlist_name.lower():
+                    return pl['tracks']['total']
+            if playlists['next']:
+                playlists = self.sp.next(playlists)
+            else:
+                playlists = None
+        return None
+
+
     def get_playlist_items(self, playlist_id) -> list:
-        """Given a Spotify playlist id, return the track titles and artists of each track in the playlist.
+        """DEPRECATED - given a playlist id, returns a list of all tracks in it.
 
         Args:
             playlist_id (str): a valid Spotify playlist id.

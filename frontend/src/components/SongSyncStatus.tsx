@@ -73,7 +73,7 @@ export function SongSyncStatus({
               className="flex flex-col items-center justify-center h-32 w-full"
             >
               <LoadingSpinner size={36} color="#fff" />
-              <div className="mt-6 text-sm text-white">Finalizing sync...</div>
+              <div className="mt-6 text-sm text-white">Finalizing sync... (Please wait until the process is complete!)</div>
             </motion.div>
           ) : (
             <motion.div

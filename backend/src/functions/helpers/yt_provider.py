@@ -520,3 +520,10 @@ class YoutubeProvider(Provider):
         }
 
         yt_dlp.YoutubeDL(ydl_opts).download([playlist_url])
+
+    def get_playlist_track_count(self, playlist_name, db):
+        """given a YouTube playlist name, return the number of tracks."""
+        playlist = self.get_playlist_by_name(playlist_name, db)
+        if playlist and 'itemCount' in playlist:
+            return playlist['itemCount']
+        return None
