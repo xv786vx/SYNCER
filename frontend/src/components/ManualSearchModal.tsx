@@ -5,6 +5,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 
 export interface ManualSearchResult {
   yt_id: string;
+  sp_id?: string;
   title: string;
   artist: string;
   thumbnail: string;
@@ -106,7 +107,7 @@ export function ManualSearchModal({
         <div className="mt-4 flex-grow overflow-y-auto hide-scrollbar pr-2">
           {results.map((result) => (
             <div
-              key={result.yt_id}
+              key={result.yt_id || result.sp_id}
               className="flex items-center gap-4 p-2 rounded-lg hover:bg-neutral-800 cursor-pointer"
               onClick={() => handleSelect(result)}
             >

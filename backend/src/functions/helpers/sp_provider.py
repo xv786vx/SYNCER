@@ -169,40 +169,25 @@ class SpotifyProvider(Provider):
             return None
         
 
-    def search_manual(self, track_name, artists) -> str:
-        """given a user's input, manually search for a track on Spotify.
-
-        Args:
-            track_name (str): a user's desired song title.
-            artists (str): a user's desired artist name (WIP INPUTTING MULTIPLE ARTISTS).
-
-        Returns:
-            str: returns ONLY the Spotify track uri if a suitable match is found, else None.
+    def search_manual(self, track_name, artists):
+        """
+        Given a user's input, manually search for a track on Spotify and return a list of results.
         """
         self.ensure_client()
         
-        clean_track_name = preprocess_title(track_name, artists)
+        query = f"{track_name} {artists}"
+        results = self.sp.search(q=query, limit=10, type='track')
         
-        query = f"{clean_track_name} {artists}"
-
-        results = self.sp.search(q=query, limit=6, type='track')
+        search_results = []
         if results['tracks']['items']:
-
             for track in results['tracks']['items']:
-                song_title = track['name']
-                artist_names = [artist['name'] for artist in track['artists']]
-
-                choice = input(f"Is this the song you were looking for? {song_title} by {artist_names} (y/n): ")
-                if choice == 'y':
-                    return track['uri']
-                
-                else:
-                    continue
-
-        else:
-            print("err: result didn't match given structure")
-            input("Press Enter to continue...")
-            return None
+                search_results.append({
+                    'sp_id': track['id'],
+                    'title': track['name'],
+                    'artist': ', '.join([artist['name'] for artist in track['artists']]),
+                    'thumbnail': track['album']['images'][0]['url'] if track['album']['images'] else ''
+                })
+        return search_results
     
 
     def get_playlists(self):

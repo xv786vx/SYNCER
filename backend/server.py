@@ -288,21 +288,55 @@ def authenticate():
         logger.error(f"Authentication error: {str(e)}")
         raise AuthenticationError("Failed to authenticate user")
 
+# @app.get("/api/sync_yt_to_sp")
+# def api_sync_yt_to_sp(playlist_name: str, db: Session = Depends(get_db)):
+#     if not playlist_name:
+#         raise ValidationError("Playlist name is required")
+    
+#     try:
+#         results = sync_yt_to_sp(playlist_name, db)
+#         if not results:
+#             raise ResourceNotFoundError(f"No songs found in playlist: {playlist_name}")
+#         return {
+#             'playlist': playlist_name,
+#             'songs': results
+#         }
+#     except Exception as e:
+#         logger.error(f"Error syncing YouTube to Spotify: {str(e)}")
+#         raise APIError(f"Failed to sync playlist: {str(e)}")
+
 @app.get("/api/sync_yt_to_sp")
-def api_sync_yt_to_sp(playlist_name: str, db: Session = Depends(get_db)):
+def api_sync_yt_to_sp(playlist_name: str, user_id: str, db: Session = Depends(get_db)):
     if not playlist_name:
         raise ValidationError("Playlist name is required")
     
     try:
-        results = sync_yt_to_sp(playlist_name, db)
+        yt = YoutubeProvider(user_id)
+        sync_status_store[user_id] = {
+            "stage": "finding",
+            "playlist": playlist_name,
+            "songs": []
+        }
+        results = sync_yt_to_sp(playlist_name, yt, db)
         if not results:
             raise ResourceNotFoundError(f"No songs found in playlist: {playlist_name}")
+        sync_status_store[user_id] = {
+            "stage": "ready_to_finalize",
+            "playlist": playlist_name,
+            "songs": results
+        }
         return {
             'playlist': playlist_name,
             'songs': results
         }
     except Exception as e:
         logger.error(f"Error syncing YouTube to Spotify: {str(e)}")
+        sync_status_store[user_id] = {
+            "stage": "error",
+            "playlist": playlist_name,
+            "songs": [],
+            "error": str(e)
+        }
         raise APIError(f"Failed to sync playlist: {str(e)}")
 
 @app.post("/api/finalize_yt_to_sp")
@@ -317,10 +351,23 @@ def finalize_yt_to_sp(playlist_name: str = Body(...), sp_ids: list = Body(...), 
             pl_info = sp.create_playlist(playlist_name)
         playlist_id = pl_info['id']
         sp.add_to_playlist(playlist_id, sp_ids)
+        sync_status_store[user_id] = {
+            "stage": "finalized",
+            "playlist": playlist_name,
+            "songs": []
+        }
         return {"status": "success", "message": f"Playlist '{playlist_name}' created/updated with {len(sp_ids)} songs."}
     except Exception as e:
         logger.error(f"Error finalizing YouTube to Spotify sync: {str(e)}")
+        sync_status_store[user_id] = {
+            "stage": "error",
+            "playlist": playlist_name,
+            "songs": [],
+            "error": str(e)
+        }
         raise APIError(f"Failed to finalize sync: {str(e)}")
+    finally:
+        sync_status_store[user_id] = {'stage': 'finalized'}
 
 @app.get("/api/sync_sp_to_yt")
 def api_sync_sp_to_yt(playlist_name: str, user_id: str, db: Session = Depends(get_db)):
@@ -432,11 +479,8 @@ def manual_search_yt_to_sp(song: str, artist: str, user_id: str):
         raise ValidationError("Song name, artist, and user_id are required")
     try:
         sp = SpotifyProvider(user_id)
-        result = sp.search_manual(song, artist)
-        if result:
-            return {"status": "found", "sp_id": result}
-        else:
-            return {"status": "not_found"}
+        results = sp.search_manual(song, artist)
+        return JSONResponse(content=results)
     except Exception as e:
         logger.error(f"Error in manual search YouTube to Spotify: {str(e)}")
         raise APIError(f"Failed to perform manual search: {str(e)}")

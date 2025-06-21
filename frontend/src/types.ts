@@ -6,6 +6,8 @@ export interface SongStatus {
   yt_title?: string;
   yt_artist?: string;
   sp_id?: string | null;
+  sp_title?: string;
+  sp_artist?: string;
   requires_manual_search: boolean;
   coverUrl?: string; // Optional cover art URL
 }

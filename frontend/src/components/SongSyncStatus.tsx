@@ -142,11 +142,15 @@ export function SongSyncStatus({
                             <div className="flex-1">
                               <div className="text-sm font-semibold truncate max-w-[200px]">{song.name}</div>
                               <div className="text-xs opacity-70 truncate max-w-[200px]">{song.artist}</div>
-                              {isFocused && song.yt_title && (
+                              {isFocused && (song.yt_title || song.sp_title) && (
                                 <div className="mt-1 border-t border-white pt-1">
                                   <p className="text-xs text-yellow-400 truncate max-w-[200px]">Matched:</p>
-                                  <p className="text-sm font-semibold text-white truncate max-w-[200px]">{song.yt_title}</p>
-                                  <p className="text-xs text-gray-300 truncate max-w-[200px]">{song.yt_artist}</p>
+                                  <p className="text-sm font-semibold text-white truncate max-w-[200px]">
+                                    {song.yt_title || song.sp_title}
+                                  </p>
+                                  <p className="text-xs text-gray-300 truncate max-w-[200px]">
+                                    {song.yt_artist || song.sp_artist}
+                                  </p>
                                 </div>
                               )}
                             </div>

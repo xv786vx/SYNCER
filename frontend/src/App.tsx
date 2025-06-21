@@ -55,6 +55,7 @@ function App() {
   const [songs, setSongs] = usePersistentState<SongStatus[]>('songs', [])
   const [ytToSpSongs, setYtToSpSongs] = usePersistentState<SongStatus[]>('ytToSpSongs', [])
   const [syncedSpPlaylist, setSyncedSpPlaylist] = usePersistentState<string>('syncedSpPlaylist', '')
+  const [syncedYtPlaylist, setSyncedYtPlaylist] = usePersistentState<string>('syncedYtPlaylist', '')
   const [toast, setToast] = useState<string | null>(null)
   const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
@@ -63,6 +64,7 @@ function App() {
   const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
   const [manualSearchSong, setManualSearchSong] = useState<SongStatus | null>(null);
+  const [manualSearchIndex, setManualSearchIndex] = useState<number | null>(null);
 
   // New: Ready to sync if both Spotify and YouTube are authenticated
   const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
@@ -188,6 +190,7 @@ function App() {
       const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
       if (data.songs) {
         setYtToSpSongs(data.songs);
+        setSyncedYtPlaylist(playlistName);
         setProcesses(prev => prev.filter(p => p.id !== processId));
         fetchQuota();
       }
@@ -257,14 +260,16 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to download song');
     }
   };
-  const handleManualSearch = (song: SongStatus) => {
+  const handleManualSearch = (song: SongStatus, index: number) => {
     setManualSearchSong(song);
+    setManualSearchIndex(index);
   };
 
-  const handleSelectManualSearch = (originalSong: SongStatus, newSongDetails: ManualSearchResult) => {
+  const handleSelectManualSearch = (_originalSong: SongStatus, newSongDetails: ManualSearchResult) => {
+    if (manualSearchIndex === null) return;
     setSongs(prev =>
-      prev.map(s =>
-        s.name === originalSong.name && s.artist === originalSong.artist
+      prev.map((s, i) =>
+        i === manualSearchIndex
           ? {
               ...s,
               status: 'found',
@@ -277,12 +282,13 @@ function App() {
       )
     );
     setManualSearchSong(null);
+    setManualSearchIndex(null);
   };
 
-  const handleSkip = (songToSkip: SongStatus) => {
+  const handleSkipSpToYt = (songToSkip: SongStatus, index: number) => {
     setSongs(prev =>
-      prev.map((s) =>
-        s.name === songToSkip.name && s.artist === songToSkip.artist
+      prev.map((s, i) =>
+        i === index
           ? { ...s, status: 'skipped', requires_manual_search: false }
           : s
       )
@@ -345,6 +351,42 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
     } finally {
       setSongs([]);
+      setFinalizing(false);
+      fetchQuota();
+    }
+  };
+
+  const handleFinalizeYtToSp = async () => {
+    setFinalizing(true);
+  
+    if (!userId || !syncedYtPlaylist) {
+      alert('Missing data for finalize: ' + JSON.stringify({ syncedYtPlaylist, spIds: ytToSpSongs.filter(s => s.status === 'found').map(s => s.sp_id), userId }));
+      setFinalizing(false);
+      return;
+    }
+  
+    const spIds = ytToSpSongs
+      .filter(s => s.status === 'found' && s.sp_id)
+      .map(s => s.sp_id) as string[];
+  
+    if (!spIds.length) {
+      alert("No songs were found to sync.");
+      setYtToSpSongs([]);
+      setFinalizing(false);
+      return;
+    }
+  
+    const processId = addProcess('finalize', `Finalizing sync for "${syncedYtPlaylist}"...`);
+    try {
+      await API.finalizeYtToSp(syncedYtPlaylist, spIds, userId);
+      updateProcess(processId, 'completed', 'Sync complete!');
+      removeProcess(processId);
+      setToast('Playlist finalized successfully!');
+    } catch (error) {
+      updateProcess(processId, 'error', 'Failed to finalize sync');
+      APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
+    } finally {
+      setYtToSpSongs([]);
       setFinalizing(false);
       fetchQuota();
     }
@@ -568,24 +610,35 @@ function App() {
     }
   };
 
-  const handleManualSearchYtToSp = async (song: SongStatus, idx: number) => {
-    if (!userId) return;
-    const data = await API.manualSearchYtToSp(song.name, song.artist, userId) as { status: string; sp_id?: string };
+  const handleManualSearchYtToSp = (song: SongStatus, index: number) => {
+    setManualSearchSong(song);
+    setManualSearchIndex(index);
+  };
+
+  const handleSelectManualSearchYtToSp = (_originalSong: SongStatus, newSongDetails: ManualSearchResult) => {
+    if (manualSearchIndex === null) return;
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
-        i === idx
-          ? data.status === 'found'
-            ? { ...s, status: 'found', sp_id: data.sp_id, requires_manual_search: false }
-            : s
+        i === manualSearchIndex
+          ? {
+              ...s,
+              status: 'found',
+              sp_id: newSongDetails.sp_id,
+              sp_title: newSongDetails.title,
+              sp_artist: newSongDetails.artist,
+              requires_manual_search: false,
+            }
           : s
       )
     );
+    setManualSearchSong(null);
+    setManualSearchIndex(null);
   };
 
-  const handleSkipYtToSp = (_song: SongStatus, idx: number) => {
+  const handleSkipYtToSp = (songToSkip: SongStatus, index: number) => {
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
-        i === idx
+        i === index
           ? { ...s, status: 'skipped', requires_manual_search: false }
           : s
       )
@@ -628,6 +681,24 @@ function App() {
     return () => clearInterval(interval);
   }, [processes, setProcesses]);
 
+  type YtToSpSearchResult = {
+    sp_id: string;
+    title: string;
+    artist: string;
+    thumbnail: string;
+  };
+
+  const wrappedManualSearchYtToSp = async (query: string, artist: string, userId: string): Promise<ManualSearchResult[]> => {
+    const results = await API.manualSearchYtToSp(query, artist, userId) as YtToSpSearchResult[];
+    return results.map(r => ({
+      yt_id: '', // yt_id is not available in this context
+      sp_id: r.sp_id,
+      title: r.title,
+      artist: r.artist,
+      thumbnail: r.thumbnail,
+    }));
+  };
+
   if (!userId) {
     // Show a loading spinner or message until userId is loaded
     return (
@@ -663,8 +734,8 @@ function App() {
                 <SongSyncStatus
                   songs={songs.length > 0 ? songs : ytToSpSongs}
                   onManualSearch={songs.length > 0 ? handleManualSearch : handleManualSearchYtToSp}
-                  onSkip={songs.length > 0 ? handleSkip : handleSkipYtToSp}
-                  onFinalize={handleFinalizeSpToYt}
+                  onSkip={songs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
+                  onFinalize={ytToSpSongs.length > 0 ? handleFinalizeYtToSp : handleFinalizeSpToYt}
                   finalizing={finalizing}
                 />
               </motion.div>
@@ -807,8 +878,8 @@ function App() {
           <ManualSearchModal
             song={manualSearchSong}
             onClose={() => setManualSearchSong(null)}
-            onSelectSong={handleSelectManualSearch}
-            manualSearchApi={API.manualSearchSpToYt}
+            onSelectSong={ytToSpSongs.length > 0 ? handleSelectManualSearchYtToSp : handleSelectManualSearch}
+            manualSearchApi={ytToSpSongs.length > 0 ? wrappedManualSearchYtToSp : API.manualSearchSpToYt}
             userId={userId!}
           />
         )}
