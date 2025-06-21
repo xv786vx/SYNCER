@@ -285,7 +285,7 @@ function App() {
     setManualSearchIndex(null);
   };
 
-  const handleSkipSpToYt = (songToSkip: SongStatus, index: number) => {
+  const handleSkipSpToYt = (_songToSkip: SongStatus, index: number) => {
     setSongs(prev =>
       prev.map((s, i) =>
         i === index
@@ -293,6 +293,8 @@ function App() {
           : s
       )
     );
+    setManualSearchSong(null);
+    setManualSearchIndex(null);
   };
 
   // Helper: Determine which overlay to show
@@ -635,7 +637,7 @@ function App() {
     setManualSearchIndex(null);
   };
 
-  const handleSkipYtToSp = (songToSkip: SongStatus, index: number) => {
+  const handleSkipYtToSp = (_songToSkip: SongStatus, index: number) => {
     setYtToSpSongs(prev =>
       prev.map((s, i) =>
         i === index
@@ -643,6 +645,8 @@ function App() {
           : s
       )
     );
+    setManualSearchSong(null);
+    setManualSearchIndex(null);
   };
 
   // Countdown effect for processes
