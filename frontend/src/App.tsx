@@ -132,7 +132,7 @@ function App() {
       
       if (!countData) {
         // Handle playlist not found case
-        updateProcess(processId, 'error', `Playlist "${playlistName}" not found.`);
+        updateProcess(processId, 'error', `Spotify playlist "${playlistName}" not found.`);
         return; // Stop execution
       }
 
@@ -156,7 +156,7 @@ function App() {
         fetchQuota();
       }
     } catch (error) {
-      updateProcess(processId, 'error', `Failed to sync "${playlistName}"`);
+      updateProcess(processId, 'error', 'Failed to sync playlist');
       APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
@@ -171,7 +171,7 @@ function App() {
     try {
       const countData = await API.getYtPlaylistTrackCount(playlistName, userId);
       if (!countData) {
-        updateProcess(processId, 'error', `Playlist "${playlistName}" not found.`);
+        updateProcess(processId, 'error', `YouTube playlist "${playlistName}" not found. (Note: Only playlists created by you are accessible)`);
         return;
       }
 
@@ -211,7 +211,7 @@ function App() {
       ]);
 
       if (!ytCountData) {
-        updateProcess(processId, 'error', `YouTube playlist "${ytPlaylist}" not found.`);
+        updateProcess(processId, 'error', `YouTube playlist "${ytPlaylist}" not found. (Note: Only playlists created by you are accessible)`);
         return;
       }
       if (!spCountData) {
@@ -223,7 +223,7 @@ function App() {
       const estimatedTime = 5 + 3 * totalTracks;
       const countdownEnd = Date.now() + estimatedTime * 1000;
       
-      const mergePlaylistName = `"${ytPlaylist}" & "${spPlaylist}"`;
+      const mergePlaylistName = `${ytPlaylist} & ${spPlaylist}`;
       setProcesses(prev => prev.map(p => 
         p.id === processId 
           ? { ...p, playlistName: mergePlaylistName, countdownEnd, status: 'in-progress' as Process['status'] } 
@@ -437,19 +437,22 @@ function App() {
       try {
         const status = await API.getSyncStatus(userId) as { stage: string; playlist?: string; songs?: SongStatus[]; error?: string };
         
-        if (status.stage === 'finding') {
+        if (status.stage === 'finding' || status.stage === 'merging') {
           // Use a functional update to get the latest state without adding `processes` to deps
           setProcesses(currentProcesses => {
               // If a sync is already running with a countdown, don't overwrite it.
-              if (currentProcesses.some(p => p.type === 'sync' && p.countdownEnd)) {
+              if (currentProcesses.some(p => (p.type === 'sync' || p.type === 'merge') && p.countdownEnd)) {
                   return currentProcesses;
               }
               // Otherwise, update from backend status
-              return [{ id: 'sync', type: 'sync', status: 'in-progress', message: `Syncing ${status.playlist}...` }];
+              const type = status.stage === 'merging' ? 'merge' : 'sync';
+              const message = status.stage === 'merging' 
+                ? `Merging playlists...` 
+                : `Syncing ${status.playlist}...`;
+              return [{ id: type, type, status: 'in-progress', message }];
           });
           setSongs([]);
           setYtToSpSongs([]);
-
         } else if (status.stage === 'ready_to_finalize') {
           setProcesses([]);
           setSongs(status.songs || []);
@@ -600,10 +603,11 @@ function App() {
           let newCountdownEnd: number | undefined = p.countdownEnd;
 
           if (remaining > 0) {
-            message = `Syncing "${p.playlistName}"...`;
+            const verb = p.type === 'merge' ? 'Merging' : 'Syncing';
+            message = `${verb} "${p.playlistName}"...`;
             subMessage = `(Estimated time: ${remaining}s)`;
           } else {
-            message = `Still working on "${p.playlistName}"... (try refreshing the extension)`;
+            message = `Still working on "${p.playlistName}"...`;
             newCountdownEnd = undefined; // Stop the countdown
           }
 

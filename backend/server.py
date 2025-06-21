@@ -248,6 +248,8 @@ def get_yt_playlist_track_count(playlist_name: str, user_id: str, db: Session = 
             raise ResourceNotFoundError(f"Playlist '{playlist_name}' not found.")
             
         return {"track_count": count}
+    except APIError as e:
+        raise e
     except Exception as e:
         logger.error(f"Error getting YT track count for playlist '{playlist_name}' for user {user_id}: {e}")
         raise APIError("Failed to get YouTube playlist track count.")
@@ -384,20 +386,25 @@ def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), 
             "error": str(e)
         }
         raise APIError(f"Failed to finalize sync: {str(e)}")
+    finally:
+        sync_status_store[user_id] = {'stage': 'finalized'}
 
 @app.get("/api/merge_playlists")
 def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str, user_id: str, db: Session = Depends(get_db)):
-    if not yt_playlist or not sp_playlist or not user_id:
-        raise ValidationError("Both playlist names and user_id are required")
-    
     try:
+        if user_id in sync_status_store and sync_status_store[user_id].get('stage') != 'idle':
+            return JSONResponse(status_code=409, content={"error": "A sync or merge process is already in progress."})
+
+        sync_status_store[user_id] = {'stage': 'merging', 'playlist': f'{yt_playlist} & {sp_playlist}'}
+        
         result = merge_playlists(yt_playlist, sp_playlist, merge_name, user_id, db)
-        return {"status": "success", "result": result}
+        return {"result": result}
     except Exception as e:
         logger.error(f"Error merging playlists: {str(e)}")
-        if 'RATE_LIMIT_EXCEEDED' in str(e):
-            raise QuotaExceededError()
+        sync_status_store[user_id] = {'stage': 'error', 'error': str(e)}
         raise APIError(f"Failed to merge playlists: {str(e)}")
+    finally:
+        sync_status_store[user_id] = {'stage': 'idle'}
 
 @app.get("/api/download_yt_song")
 def api_download_yt_song(song_name: str, artists: str, user_id: str):
@@ -582,7 +589,4 @@ def youtube_auth_status(user_id: str):
 
 @app.get("/api/sync_status")
 def get_sync_status(user_id: str):
-    status = sync_status_store.get(user_id)
-    if not status:
-        return {"stage": "idle"}
-    return status
+    return sync_status_store.get(user_id, {"stage": "idle"})

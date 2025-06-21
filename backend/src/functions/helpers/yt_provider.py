@@ -350,35 +350,42 @@ class YoutubeProvider(Provider):
     
 
     def get_playlist_by_name(self, playlist_name, db):
-        self._check_authenticated()
-        """given a Youtube playlist name, return the playlist's information.
-
-        Args:
-            playlist_name (str): a playlist name to search for.
-
-        Returns:
-            dict: {'title': playlist name, 'id': playlist id, 'description': playlist description, 'image': playlist image}
-        """
-        playlists = self.get_playlists(db)
-        if playlists is None:
-            print(f"Could not retrieve playlists. Please check your authorization.")
-            return None
+        """given a Youtube playlist name, return the playlist's information."""
+        if not self._check_authenticated():
+            raise Exception("YouTube authentication required.")
         
-        for pl in playlists:
-            if pl['title'].lower() == playlist_name.lower():  # Case-insensitive comparison
-                return {
-                    'title': pl['title'],
-                    'id': pl['id'],
-                    'description': pl.get('description', ''),
-                    'image': pl.get('image', None),
-                }
-        return None 
+        print("Attempting to execute self.youtube.playlists().list...")
+        try:
+            request = self.youtube.playlists().list(
+                part="snippet,contentDetails",
+                mine=True,
+                maxResults=50
+            )
+            
+            while request:
+                response = request.execute()
+                increment_quota(db, 1) 
+
+                for playlist in response.get('items', []):
+                    if playlist['snippet']['title'].lower() == playlist_name.lower():
+                        return {
+                            'id': playlist['id'],
+                            'title': playlist['snippet']['title'],
+                            'description': playlist['snippet'].get('description', ''),
+                            'itemCount': playlist['contentDetails']['itemCount']
+                        }
+                
+                request = self.youtube.playlists().list_next(request, response)
+
+            return None
+        except Exception as e:
+            print(f"Failed to get playlists: {e}")
+            return None
 
 
     def get_playlist_items(self, playlist_id, db):
-        self._check_authenticated()
-        """Given a Youtube playlist id, return the track's title, artists and id of each track in the playlist.
-
+        """given a playlist id, return a list of all tracks in it.
+        
         Args:
             playlist_id (str): a valid Youtube playlist id.
 
