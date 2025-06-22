@@ -23,6 +23,11 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db):
     print(f"(Step 2) Syncing {pl_info['title']}, {pl_info['id']} to Youtube...")
     t_to_sync_sp = sp.get_playlist_items(pl_info['id'])
 
+    # Extra safeguard against None return
+    if t_to_sync_sp is None:
+        print(f"Error: get_playlist_items returned None for playlist ID {pl_info['id']}")
+        t_to_sync_sp = []
+
     t_to_sync_yt = []
     for track in t_to_sync_sp:
         if track.get('is_unplayable'):

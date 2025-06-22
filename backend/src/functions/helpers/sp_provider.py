@@ -85,36 +85,45 @@ class SpotifyProvider(Provider):
         all_tracks_found = []
         
         for query in search_queries:
-            results = self.sp.search(q=query, limit=10, type='track')
-            
-            if not results['tracks']['items']:
-                continue
-            
-            for track in results['tracks']['items']:
-                sp_track_title = track['name']
-                sp_artist_names = [artist['name'] for artist in track['artists']]
-                sp_artists_str = ', '.join(sp_artist_names)
-                
-                # Skip if we've already seen this track
-                if track['uri'] in [t[0] for t in all_tracks_found]:
+            try:
+                results = self.sp.search(q=query, limit=10, type='track')
+                if not results or 'tracks' not in results or not results['tracks'] or 'items' not in results['tracks']:
+                    print(f"Spotify search returned no usable result for query: {query}")
                     continue
-                
+                items = results['tracks']['items']
+                if not items or not isinstance(items, list):
+                    print(f"Spotify search returned empty or malformed items for query: {query}")
+                    continue
+            except Exception as e:
+                print(f"An exception occurred during Spotify search for query '{query}': {e}")
+                continue
+
+            for track in items:
+                if not track or not isinstance(track, dict):
+                    continue
+                sp_track_title = track.get('name')
+                sp_artist_objs = track.get('artists')
+                if not sp_track_title or not sp_artist_objs or not isinstance(sp_artist_objs, list):
+                    continue
+                sp_artist_names = [artist.get('name') for artist in sp_artist_objs if artist and artist.get('name')]
+                sp_artists_str = ', '.join(sp_artist_names)
+                if not sp_artist_names:
+                    continue
+                # Skip if we've already seen this track
+                if track.get('uri') in [t[0] for t in all_tracks_found]:
+                    continue
                 # Multiple scoring approaches for title
                 title_scores = []
-                
                 # Direct fuzzy match
                 title_scores.append(fuzzy_match(sp_track_title.lower(), track_name.lower()))
-                
                 # Clean title match (without feat/ft parts)
                 clean_sp_title = preprocess_title(sp_track_title)
                 clean_yt_title = preprocess_title(track_name)
                 title_scores.append(fuzzy_match(clean_sp_title, clean_yt_title))
-                
                 # Handle featured artists in track names
                 if '(' in track_name and ('feat' in track_name.lower() or 'ft' in track_name.lower()):
                     main_title = track_name.split('(')[0].strip()
                     title_scores.append(fuzzy_match(sp_track_title.lower(), main_title.lower()))
-                
                 # Check if track titles contain similar words
                 sp_words = set(sp_track_title.lower().replace('(', ' ').replace(')', ' ').split())
                 yt_words = set(track_name.lower().replace('(', ' ').replace(')', ' ').split())
@@ -122,41 +131,30 @@ class SpotifyProvider(Provider):
                 if len(common_words) > 0:
                     word_score = (len(common_words) / max(len(sp_words), len(yt_words))) * 100
                     title_scores.append(word_score)
-                
-                title_score = max(title_scores)
-                
+                title_score = max(title_scores) if title_scores else 0
                 # Artist matching with multiple approaches
                 artist_scores = []
-                
                 # Direct artist name matching
                 for sp_artist in sp_artist_names:
                     artist_scores.append(fuzzy_match(sp_artist.lower(), artists.lower()))
-                    
                     # Check if artist name appears in YouTube title
                     if sp_artist.lower() in track_name.lower():
                         artist_scores.append(85)
-                    
                     # Check individual words of artist names
                     for artist_word in sp_artist.lower().split():
                         if len(artist_word) > 2 and artist_word in artists.lower():
                             artist_scores.append(75)
-                
                 # Check if any part of the artist string matches
                 artist_scores.append(fuzzy_match(sp_artists_str.lower(), artists.lower()))
-                
                 artist_score = max(artist_scores) if artist_scores else 0
-                
                 # Calculate total score
                 total_score = 0.7 * title_score + 0.3 * artist_score
-                
                 # Store all tracks
-                all_tracks_found.append((track['uri'], title_score, artist_score, sp_track_title, sp_artists_str, total_score))
-                
+                all_tracks_found.append((track.get('uri'), title_score, artist_score, sp_track_title, sp_artists_str, total_score))
                 # Update best match
                 best_total_score = 0.7 * best_match[1] + 0.3 * best_match[2]
                 if total_score > best_total_score:
-                    best_match = [track['uri'], title_score, artist_score, sp_track_title, sp_artists_str]
-        
+                    best_match = [track.get('uri'), title_score, artist_score, sp_track_title, sp_artists_str]
         # Check thresholds
         if best_match[1] >= 60 and best_match[2] >= 40:
             print(f"✓ Final match: '{best_match[3]}' by {best_match[4]}")
@@ -259,10 +257,14 @@ class SpotifyProvider(Provider):
             for item in results['items']:
                 # Handle cases where track metadata is missing (e.g., deleted songs)
                 if item and item['track'] and item['track']['id']:
+                    track_info = item['track']
+                    artists = track_info.get('artists', [])
+                    artist_names = [artist['name'] for artist in artists if artist and artist.get('name')]
+
                     tracks.append({
-                        'title': item['track']['name'],
-                        'id': item['track']['id'],
-                        'artist': ', '.join([artist['name'] for artist in item['track']['artists']]),
+                        'title': track_info.get('name', 'Untitled Track'),
+                        'id': track_info['id'],
+                        'artist': ', '.join(artist_names),
                         'is_unplayable': False
                     })
                 else:

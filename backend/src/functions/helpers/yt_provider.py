@@ -179,16 +179,39 @@ class YoutubeProvider(Provider):
         all_videos_found = []
         
         for query in search_queries:
-            search = VideosSearch(query, limit=10)
-            response = search.result().get('result', [])
-            
-            if not response:
+            try:
+                search = VideosSearch(query, limit=10)
+                search_result = search.result()
+
+                # Defensive check against None or malformed responses
+                if not search_result or 'result' not in search_result:
+                    print(f"YouTube search returned no result for query: {query}")
+                    continue
+
+                response = search_result['result']
+                if response is None:
+                    print(f"YouTube search returned 'result: None' for query: {query}")
+                    continue
+
+            except Exception as e:
+                print(f"An exception occurred during YouTube search for query '{query}': {e}")
                 continue
-            
+
             for item in response:
-                yt_video_title = item['title']
-                yt_channel_name = item['channel']['name']
-                video_id = item['id']
+                if not item or not isinstance(item, dict):
+                    continue
+
+                yt_video_title = item.get('title')
+                yt_channel_info = item.get('channel')
+                video_id = item.get('id')
+
+                # Ensure essential fields are present
+                if not all([yt_video_title, yt_channel_info, video_id]):
+                    continue
+
+                yt_channel_name = yt_channel_info.get('name')
+                if not yt_channel_name:
+                    continue
                 
                 # Skip if we've already seen this video
                 if video_id in [v[0] for v in all_videos_found]:

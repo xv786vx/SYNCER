@@ -24,14 +24,14 @@ import { getOrCreateUserId } from './utils/userId';
 import { usePersistentState } from './utils/usePersistentState';
 
 function getMsUntilMidnightEST() {
-  // Get current time in UTC
   const now = new Date();
-  // EST is UTC-5, but account for daylight saving if needed
-  // For simplicity, let's use UTC-5 always
-  const nowEST = new Date(now.getTime() - (now.getTimezoneOffset() + 300) * 60000);
-  const nextMidnight = new Date(nowEST);
-  nextMidnight.setHours(24, 0, 0, 0);
-  return nextMidnight.getTime() - nowEST.getTime();
+  // Get the current time in the America/New_York timezone
+  const nowInEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+  // Create a new date for the next midnight in that timezone
+  const nextMidnightEST = new Date(nowInEST);
+  nextMidnightEST.setHours(24, 0, 0, 0);
+  // Return the difference in milliseconds
+  return nextMidnightEST.getTime() - nowInEST.getTime();
 }
 
 function formatMs(ms: number) {
