@@ -1,7 +1,7 @@
 // import reactLogo from './assets/react.svg'
 // import viteLogo from '/vite.svg'
 // import './App.css'
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { FaSpotify } from 'react-icons/fa';
 import { SiYoutube } from 'react-icons/si';
 import './App.css';
@@ -22,6 +22,16 @@ import Dither from "./components/Dither";
 import { startYoutubeOAuth } from './utils/apiClient';
 import { getOrCreateUserId } from './utils/userId';
 import { usePersistentState } from './utils/usePersistentState';
+
+// Define a type for our jobs
+interface Job {
+  job_id: string;
+  status: 'pending' | 'in-progress' | 'ready_to_finalize' | 'done' | 'error';
+  result?: { songs?: SongStatus[]; result?: string };
+  error?: string;
+  type?: 'sync_sp_to_yt' | 'sync_yt_to_sp' | 'merge';
+  playlist_name?: string;
+}
 
 function getMsUntilMidnightEST() {
   const now = new Date();
@@ -54,8 +64,6 @@ function App() {
   const [processes, setProcesses] = usePersistentState<Process[]>('processes', [])
   const [songs, setSongs] = usePersistentState<SongStatus[]>('songs', [])
   const [ytToSpSongs, setYtToSpSongs] = usePersistentState<SongStatus[]>('ytToSpSongs', [])
-  const [syncedSpPlaylist, setSyncedSpPlaylist] = usePersistentState<string>('syncedSpPlaylist', '')
-  const [syncedYtPlaylist, setSyncedYtPlaylist] = usePersistentState<string>('syncedYtPlaylist', '')
   const [toast, setToast] = useState<string | null>(null)
   const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
@@ -65,6 +73,7 @@ function App() {
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
   const [manualSearchSong, setManualSearchSong] = useState<SongStatus | null>(null);
   const [manualSearchIndex, setManualSearchIndex] = useState<number | null>(null);
+  const [currentJobId, setCurrentJobId] = usePersistentState<string | null>('currentJobId', null);
 
   // New: Ready to sync if both Spotify and YouTube are authenticated
   const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
@@ -77,15 +86,15 @@ function App() {
     return () => clearTimeout(timeout);
   }, [activeTab, quotaExceeded]);
 
-  const fetchQuota = async () => {
-      try {
-        const data = await API.getYoutubeQuota() as { total: number; limit: number };
-        console.log('[DEBUG] Quota API response:', data);
-        setQuota({ total: data.total, limit: data.limit });
-      } catch {
-        setQuota(null);
-      }
-    };
+  const fetchQuota = useCallback(async () => {
+    try {
+      const data = await API.getYoutubeQuota() as { total: number; limit: number };
+      console.log('[DEBUG] Quota API response:', data);
+      setQuota({ total: data.total, limit: data.limit });
+    } catch {
+      setQuota(null);
+    }
+  }, []);
   
 
   const addProcess = (type: string, message: string, extra: Partial<Omit<Process, 'id' | 'type' | 'status' | 'message'>> = {}) => {
@@ -121,130 +130,59 @@ function App() {
       APIErrorHandler.handleError(error as Error, 'Failed to fetch application status');
     }
   }
+
+  const startJobPolling = (jobId: string, type: string, message: string) => {
+    setCurrentJobId(jobId);
+    setProcesses([{ id: jobId, type, status: 'in-progress', message, countdownEnd: Date.now() + 3600 * 1000 }]); // Long countdown
+  };
+
   const handleSyncSpToYt = async (playlistName: string, userId: string) => {
     if (!userId) return;
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
-
-    const processId = addProcess('sync', `Preparing to sync "${playlistName}"...`);
-
+    
     try {
-      // Get track count for estimation
-      const countData = await API.getSpPlaylistTrackCount(playlistName, userId);
-      
-      if (!countData) {
-        // Handle playlist not found case
-        updateProcess(processId, 'error', `Spotify playlist "${playlistName}" not found.`);
-        return; // Stop execution
-      }
-
-      const trackCount = countData.track_count;
-      const estimatedTime = 5 + 3 * trackCount;
-      const countdownEnd = Date.now() + estimatedTime * 1000;
-
-      // Update the existing process with countdown info
-      setProcesses(prev => prev.map(p => 
-        p.id === processId 
-          ? { ...p, playlistName, countdownEnd, status: 'in-progress' as Process['status'] } 
-          : p
-      ));
-      
-      const data = await API.syncSpToYt(playlistName, userId) as APIResponse;
-
-      if (data.songs) {
-        setSongs(data.songs);
-        setSyncedSpPlaylist(playlistName);
-        setProcesses(prev => prev.filter(p => p.id !== processId));
-        fetchQuota();
+      const data = await API.startSyncSpToYt(playlistName, userId) as { job_id: string };
+      if (data.job_id) {
+        // setSyncedSpPlaylist(playlistName); // No longer needed, job tracks this
+        startJobPolling(data.job_id, 'sync', `Syncing "${playlistName}"...`);
       }
     } catch (error) {
-      updateProcess(processId, 'error', 'Failed to sync playlist');
-      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
+      APIErrorHandler.handleError(error as Error, 'Failed to start sync job');
     }
   };
+
   const handleSyncYtToSp = async (playlistName: string, userId: string) => {
     if (!userId || !playlistName) return;
-
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
-
-    const processId = addProcess('sync', `Preparing to sync "${playlistName}"...`);
     
     try {
-      const countData = await API.getYtPlaylistTrackCount(playlistName, userId);
-      if (!countData) {
-        updateProcess(processId, 'error', `YouTube playlist "${playlistName}" not found. (Note: Only playlists created by you are accessible)`);
-        return;
-      }
-
-      const trackCount = countData.track_count;
-      const estimatedTime = 5 + 3 * trackCount;
-      const countdownEnd = Date.now() + estimatedTime * 1000;
-
-      setProcesses(prev => prev.map(p => 
-        p.id === processId 
-          ? { ...p, playlistName, countdownEnd, status: 'in-progress' as Process['status'] } 
-          : p
-      ));
-
-      const data = await API.syncYtToSp(playlistName, userId) as APIResponse;
-      if (data.songs) {
-        setYtToSpSongs(data.songs);
-        setSyncedYtPlaylist(playlistName);
-        setProcesses(prev => prev.filter(p => p.id !== processId));
-        fetchQuota();
+      const data = await API.startSyncYtToSp(playlistName, userId) as { job_id: string };
+      if (data.job_id) {
+        // setSyncedYtPlaylist(playlistName); // No longer needed, job tracks this
+        startJobPolling(data.job_id, 'sync', `Syncing "${playlistName}"...`);
       }
     } catch (e) {
-      updateProcess(processId, 'error', 'Failed to sync playlist');
-      APIErrorHandler.handleError(e as Error, 'Failed to sync playlist');
+      APIErrorHandler.handleError(e as Error, 'Failed to start sync job');
     }
   };
+
   const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
     if (!userId || !ytPlaylist || !spPlaylist || !mergeName) return;
-
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
     
-    const processId = addProcess('merge', `Preparing to merge "${ytPlaylist}" and "${spPlaylist}"...`);
-    
     try {
-      const [ytCountData, spCountData] = await Promise.all([
-        API.getYtPlaylistTrackCount(ytPlaylist, userId),
-        API.getSpPlaylistTrackCount(spPlaylist, userId)
-      ]);
-
-      if (!ytCountData) {
-        updateProcess(processId, 'error', `YouTube playlist "${ytPlaylist}" not found. (Note: Only playlists created by you are accessible)`);
-        return;
-      }
-      if (!spCountData) {
-        updateProcess(processId, 'error', `Spotify playlist "${spPlaylist}" not found.`);
-        return;
-      }
-
-      const totalTracks = ytCountData.track_count + spCountData.track_count;
-      const estimatedTime = 5 + 3 * totalTracks;
-      const countdownEnd = Date.now() + estimatedTime * 1000;
-      
-      const mergePlaylistName = `${ytPlaylist} & ${spPlaylist}`;
-      setProcesses(prev => prev.map(p => 
-        p.id === processId 
-          ? { ...p, playlistName: mergePlaylistName, countdownEnd, status: 'in-progress' as Process['status'] } 
-          : p
-      ));
-
-      const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
-      if (data.result) {
-        setToast(data.result);
-        updateProcess(processId, 'completed', 'Merge complete!');
-        removeProcess(processId);
-        fetchQuota();
+      const data = await API.startMergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as { job_id: string };
+      if (data.job_id) {
+        startJobPolling(data.job_id, 'merge', `Merging "${ytPlaylist}" & "${spPlaylist}"...`);
       }
     } catch (error) {
-      updateProcess(processId, 'error', 'Failed to merge playlists');
-      APIErrorHandler.handleError(error as Error, 'Failed to merge playlists');
+      APIErrorHandler.handleError(error as Error, 'Failed to start merge job');
     }
   };
+
   const handleDownloadSong = async (songTitle: string, artists: string, userId: string) => {
     if (!userId) return;
     const processId = addProcess('download', `Downloading "${songTitle}"...`);
@@ -324,79 +262,47 @@ function App() {
 
   // --- Minimal fade-out for SongSyncStatus overlay ---
   const handleFinalizeSpToYt = async () => {
-    setFinalizing(true); // Set finalizing at the beginning
-
-    if (!userId || !syncedSpPlaylist) {
-      alert('Missing data for finalize: ' + JSON.stringify({syncedSpPlaylist, ytIds: songs.filter(s => s.status === 'found').map(s => s.yt_id), userId}));
-      setFinalizing(false); // Reset on failure
+    setFinalizing(true);
+    if (!currentJobId) {
+      alert('Cannot finalize: No active job found.');
+      setFinalizing(false);
       return;
     }
 
-    const ytIds = songs
-      .filter(s => s.status === 'found' && s.yt_id)
-      .map(s => s.yt_id) as string[];
-
-    if (!ytIds.length) {
-        alert("No songs were found to sync.");
-        setSongs([]);
-        setFinalizing(false);
-        return;
-    }
-    
-    const processId = addProcess('finalize', `Finalizing sync for "${syncedSpPlaylist}"...`);
     try {
-      await API.finalizeSpToYt(syncedSpPlaylist, ytIds, userId);
-      updateProcess(processId, 'completed', 'Sync complete!');
-      removeProcess(processId); // Automatically removes after a 2-second delay
+      await API.finalizeJob(currentJobId);
       setToast('Playlist finalized successfully!');
+      // Polling will handle UI updates
     } catch (error) {
-      updateProcess(processId, 'error', 'Failed to finalize sync');
       APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
     } finally {
-      setSongs([]);
-      setFinalizing(false);
-      fetchQuota();
+      // Don't set finalizing to false here, let the polling handle it
     }
   };
 
   const handleFinalizeYtToSp = async () => {
     setFinalizing(true);
-  
-    if (!userId || !syncedYtPlaylist) {
-      alert('Missing data for finalize: ' + JSON.stringify({ syncedYtPlaylist, spIds: ytToSpSongs.filter(s => s.status === 'found').map(s => s.sp_id), userId }));
+    if (!currentJobId) {
+      alert('Cannot finalize: No active job found.');
       setFinalizing(false);
       return;
     }
-  
-    const spIds = ytToSpSongs
-      .filter(s => s.status === 'found' && s.sp_id)
-      .map(s => s.sp_id) as string[];
-  
-    if (!spIds.length) {
-      alert("No songs were found to sync.");
-      setYtToSpSongs([]);
-      setFinalizing(false);
-      return;
-    }
-  
-    const processId = addProcess('finalize', `Finalizing sync for "${syncedYtPlaylist}"...`);
+
     try {
-      await API.finalizeYtToSp(syncedYtPlaylist, spIds, userId);
-      updateProcess(processId, 'completed', 'Sync complete!');
-      removeProcess(processId);
+      await API.finalizeJob(currentJobId);
       setToast('Playlist finalized successfully!');
     } catch (error) {
-      updateProcess(processId, 'error', 'Failed to finalize sync');
       APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
-    } finally {
-      setYtToSpSongs([]);
-      setFinalizing(false);
-      fetchQuota();
     }
   };
 
   // Remove dismissProcesses overlay state, just clear processes
-  const dismissProcesses = () => setProcesses([]);
+  const dismissProcesses = () => {
+    setProcesses([]);
+    if (currentJobId) {
+      // Optionally, you could have an API endpoint to cancel/dismiss a job
+    }
+  }
 
   useEffect(() => {
     if (data.name === '') fetchStatus()
@@ -407,7 +313,7 @@ function App() {
     fetchQuota();
     const interval = setInterval(fetchQuota, 6000); // fetch every minute
     return () => clearInterval(interval);
-  }, []);
+  }, [fetchQuota]);
 
   useEffect(() => {
     if (quota && quota.total >= quota.limit) {
@@ -475,46 +381,99 @@ function App() {
     getOrCreateUserId().then(setUserId);
   }, []);
 
-  // On mount or when userId changes, poll backend for sync status and update UI state
+  const handleJobUpdate = useCallback((job: Job) => {
+    if (!job) {
+      setProcesses([]);
+      setSongs([]);
+      setYtToSpSongs([]);
+      setCurrentJobId(null);
+      setFinalizing(false);
+      return;
+    }
+  
+    const { job_id, status, result, error, type, playlist_name } = job;
+  
+    if (status === 'in-progress' || status === 'pending') {
+      const message = type === 'merge' ? 'Merging playlists...' : `Syncing "${playlist_name}"...`;
+      setProcesses([{ id: job_id, type: type || 'sync', status: 'in-progress', message }]);
+      setSongs([]);
+      setYtToSpSongs([]);
+    } else if (status === 'ready_to_finalize') {
+      setProcesses([]);
+      const songs = result?.songs || [];
+      if (type === 'sync_yt_to_sp') {
+        setYtToSpSongs(songs);
+        setSongs([]);
+      } else {
+        setSongs(songs);
+        setYtToSpSongs([]);
+      }
+      setFinalizing(false);
+    } else if (status === 'done') {
+      setProcesses([]);
+      setSongs([]);
+      setYtToSpSongs([]);
+      setCurrentJobId(null);
+      setFinalizing(false);
+      if (type === 'merge' && result?.result) {
+        setToast(result.result);
+      } else {
+        setToast('Sync complete!');
+      }
+      fetchQuota();
+    } else if (status === 'error') {
+      setProcesses([{ id: job_id, type: type || 'sync', status: 'error', message: error || 'An unknown error occurred.' }]);
+      setSongs([]);
+      setYtToSpSongs([]);
+      setCurrentJobId(null); // Stop polling on error
+      setFinalizing(false);
+    }
+  }, [fetchQuota, setProcesses, setSongs, setYtToSpSongs, setCurrentJobId, setFinalizing, setToast]);
+  
+  // Polling logic for job status
+  useEffect(() => {
+    if (!currentJobId) {
+      return;
+    }
+  
+    const interval = setInterval(async () => {
+      try {
+        const job = await API.getJobStatus(currentJobId) as Job;
+        handleJobUpdate(job);
+  
+        if (job.status === 'done' || job.status === 'error') {
+          clearInterval(interval);
+        }
+      } catch (error) {
+        APIErrorHandler.handleError(error as Error, `Polling failed for job ${currentJobId}`);
+        clearInterval(interval);
+        setCurrentJobId(null); // Stop polling on error
+      }
+    }, 3000); // Poll every 3 seconds
+  
+    return () => clearInterval(interval);
+  }, [currentJobId, handleJobUpdate, setCurrentJobId]);
+
+  // On mount or when userId changes, check for the latest job
   useEffect(() => {
     if (!userId) return;
-    const fetchSyncStatus = async () => {
+
+    // If there's already a job being polled, don't check for a new one.
+    if (currentJobId) return;
+
+    const resumeLatestJob = async () => {
       try {
-        const status = await API.getSyncStatus(userId) as { stage: string; playlist?: string; songs?: SongStatus[]; error?: string };
-        
-        if (status.stage === 'finding' || status.stage === 'merging') {
-          // Use a functional update to get the latest state without adding `processes` to deps
-          setProcesses(currentProcesses => {
-              // If a sync is already running with a countdown, don't overwrite it.
-              if (currentProcesses.some(p => (p.type === 'sync' || p.type === 'merge') && p.countdownEnd)) {
-                  return currentProcesses;
-              }
-              // Otherwise, update from backend status
-              const type = status.stage === 'merging' ? 'merge' : 'sync';
-              const message = status.stage === 'merging' 
-                ? `Merging playlists...` 
-                : `Syncing ${status.playlist}...`;
-              return [{ id: type, type, status: 'in-progress', message }];
-          });
-          setSongs([]);
-          setYtToSpSongs([]);
-        } else if (status.stage === 'ready_to_finalize') {
-          setProcesses([]);
-          setSongs(status.songs || []);
-          setYtToSpSongs([]);
-        } else if (status.stage === 'finalized' || status.stage === 'idle') {
-          setProcesses([]);
-          setSongs([]);
-          setYtToSpSongs([]);
-        } else if (status.stage === 'error') {
-          setProcesses([{ id: 'sync', type: 'sync', status: 'error', message: status.error || 'Sync error' }]);
+        const latestJob = await API.getLatestJob(userId) as Job | null;
+        if (latestJob && (latestJob.status === 'in-progress' || latestJob.status === 'ready_to_finalize')) {
+            setCurrentJobId(latestJob.job_id);
+            handleJobUpdate(latestJob); // Immediately update UI with the job's state
         }
       } catch {
-        // Ignore errors for now
+        // Silently fail, no need to bother the user
       }
     };
-    fetchSyncStatus();
-  }, [userId, setProcesses, setSongs, setYtToSpSongs]);
+    resumeLatestJob();
+  }, [userId, currentJobId, handleJobUpdate, setCurrentJobId]);
 
   // Only check auth and trigger OAuth if userId is loaded
   useEffect(() => {
