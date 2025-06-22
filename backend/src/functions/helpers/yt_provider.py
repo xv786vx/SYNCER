@@ -392,7 +392,8 @@ class YoutubeProvider(Provider):
         Returns:
            list[dict]: [{'title': track title, 'id': track id, 'artist': track artist}, ...]
         """
-        playlist_items = []
+        tracks_info = []
+        
         request = self.youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=25)
     
         while request:
@@ -402,19 +403,27 @@ class YoutubeProvider(Provider):
             increment_quota(db, count=1)
             
             # Add the current batch of items to the playlist_items list
-            playlist_items.extend([
-                {
-                    'title': item['snippet']['title'],
-                    'id': item['snippet']['resourceId']['videoId'],
-                    'artist': item['snippet']['videoOwnerChannelTitle']
-                }
-                for item in response['items']
-            ])
+            for item in response['items']:
+                snippet = item.get('snippet')
+                if snippet and snippet.get('resourceId') and snippet.get('resourceId', {}).get('videoId'):
+                    tracks_info.append({
+                        'title': snippet.get('title', 'Untitled'),
+                        'id': snippet['resourceId']['videoId'],
+                        'artist': snippet.get('videoOwnerChannelTitle', 'Unknown Artist'),
+                        'is_unplayable': False
+                    })
+                else:
+                    tracks_info.append({
+                        'title': 'Unplayable/Deleted Video',
+                        'id': None,
+                        'artist': 'N/A',
+                        'is_unplayable': True
+                    })
             
             # Check if there's a next page
             request = self.youtube.playlistItems().list_next(request, response)
     
-        return playlist_items
+        return tracks_info
     
 
     def add_to_playlist(self, playlist_id, item_ids, db) -> None:

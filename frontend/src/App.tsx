@@ -236,7 +236,8 @@ function App() {
       const data = await API.mergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as APIResponse;
       if (data.result) {
         setToast(data.result);
-        setProcesses(prev => prev.filter(p => p.id !== processId));
+        updateProcess(processId, 'completed', 'Merge complete!');
+        removeProcess(processId);
         fetchQuota();
       }
     } catch (error) {

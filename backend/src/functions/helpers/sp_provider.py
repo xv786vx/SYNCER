@@ -247,28 +247,38 @@ class SpotifyProvider(Provider):
 
 
     def get_playlist_items(self, playlist_id) -> list:
-        """DEPRECATED - given a playlist id, returns a list of all tracks in it.
-
-        Args:
-            playlist_id (str): a valid Spotify playlist id.
-
-        Returns:
-            list[dict]: [{'title': track title, 'artist': track artist}, ...]
+        """
+        Given a playlist id, returns a list of all tracks in it, handling pagination.
         """
         self.ensure_client()
         
-        playlist_items = self.sp.playlist_tracks(playlist_id)
-        tracks_info = []
-        for item in playlist_items['items']:
-            track = item['track']
-            
-            tracks_info.append({
-                'title': track['name'],
-                'id': track['id'],
-                'artist': ', '.join([artist['name'] for artist in track['artists']]),
-            })
+        results = self.sp.playlist_items(playlist_id)
+        tracks = []
         
-        return tracks_info
+        while results:
+            for item in results['items']:
+                # Handle cases where track metadata is missing (e.g., deleted songs)
+                if item and item['track'] and item['track']['id']:
+                    tracks.append({
+                        'title': item['track']['name'],
+                        'id': item['track']['id'],
+                        'artist': ', '.join([artist['name'] for artist in item['track']['artists']]),
+                        'is_unplayable': False
+                    })
+                else:
+                    tracks.append({
+                        'title': 'Unplayable/Deleted Song',
+                        'id': None,
+                        'artist': 'N/A',
+                        'is_unplayable': True
+                    })
+            # Check for next page
+            if results['next']:
+                results = self.sp.next(results)
+            else:
+                results = None
+        
+        return tracks
 
 
     def add_to_playlist(self, playlist_id, track_uri) -> None:

@@ -310,6 +310,10 @@ def api_sync_yt_to_sp(playlist_name: str, user_id: str, db: Session = Depends(ge
     if not playlist_name:
         raise ValidationError("Playlist name is required")
     
+    active_stages = ['finding', 'merging', 'finalizing', 'ready_to_finalize']
+    if sync_status_store.get(user_id, {}).get('stage') in active_stages:
+        raise APIError("A sync or merge process is already in progress.", status_code=409)
+    
     try:
         yt = YoutubeProvider(user_id)
         sync_status_store[user_id] = {
@@ -366,13 +370,15 @@ def finalize_yt_to_sp(playlist_name: str = Body(...), sp_ids: list = Body(...), 
             "error": str(e)
         }
         raise APIError(f"Failed to finalize sync: {str(e)}")
-    finally:
-        sync_status_store[user_id] = {'stage': 'finalized'}
 
 @app.get("/api/sync_sp_to_yt")
 def api_sync_sp_to_yt(playlist_name: str, user_id: str, db: Session = Depends(get_db)):
     if not playlist_name:
         raise ValidationError("Playlist name is required")
+
+    active_stages = ['finding', 'merging', 'finalizing', 'ready_to_finalize']
+    if sync_status_store.get(user_id, {}).get('stage') in active_stages:
+        raise APIError("A sync or merge process is already in progress.", status_code=409)
 
     try:
         sp = SpotifyProvider(user_id)  # Pass user_id to SpotifyProvider
@@ -433,25 +439,23 @@ def finalize_sp_to_yt(playlist_name: str = Body(...), yt_ids: list = Body(...), 
             "error": str(e)
         }
         raise APIError(f"Failed to finalize sync: {str(e)}")
-    finally:
-        sync_status_store[user_id] = {'stage': 'finalized'}
 
 @app.get("/api/merge_playlists")
 def api_merge_playlists(yt_playlist: str, sp_playlist: str, merge_name: str, user_id: str, db: Session = Depends(get_db)):
     try:
-        if user_id in sync_status_store and sync_status_store[user_id].get('stage') != 'idle':
-            return JSONResponse(status_code=409, content={"error": "A sync or merge process is already in progress."})
+        active_stages = ['finding', 'merging', 'finalizing', 'ready_to_finalize']
+        if sync_status_store.get(user_id, {}).get('stage') in active_stages:
+            raise APIError("A sync or merge process is already in progress.", status_code=409)
 
         sync_status_store[user_id] = {'stage': 'merging', 'playlist': f'{yt_playlist} & {sp_playlist}'}
         
         result = merge_playlists(yt_playlist, sp_playlist, merge_name, user_id, db)
+        sync_status_store[user_id] = {'stage': 'finalized'}
         return {"result": result}
     except Exception as e:
         logger.error(f"Error merging playlists: {str(e)}")
         sync_status_store[user_id] = {'stage': 'error', 'error': str(e)}
         raise APIError(f"Failed to merge playlists: {str(e)}")
-    finally:
-        sync_status_store[user_id] = {'stage': 'idle'}
 
 @app.get("/api/download_yt_song")
 def api_download_yt_song(song_name: str, artists: str, user_id: str):

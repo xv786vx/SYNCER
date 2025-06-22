@@ -10,6 +10,7 @@ export interface SongStatus {
   sp_artist?: string;
   requires_manual_search: boolean;
   coverUrl?: string; // Optional cover art URL
+  reason?: string;
 }
 
 export interface Process {

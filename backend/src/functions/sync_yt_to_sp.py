@@ -25,6 +25,17 @@ def sync_yt_to_sp(playlist_to_modify, yt: YoutubeProvider, db):
 
     t_to_sync_sp = []
     for track in t_to_sync_yt:
+        if track.get('is_unplayable'):
+            t_to_sync_sp.append({
+                "name": track['title'],
+                "artist": track['artist'],
+                "status": "not_found",
+                "sp_id": None,
+                "requires_manual_search": True,
+                "reason": "Unplayable video on YouTube. Search for a replacement?"
+            })
+            continue
+
         song = track['title']
         artists = track['artist']
 

@@ -142,6 +142,11 @@ export function SongSyncStatus({
                             <div className="flex-1">
                               <div className="text-sm font-semibold truncate max-w-[200px]">{song.name}</div>
                               <div className="text-xs opacity-70 truncate max-w-[200px]">{song.artist}</div>
+                              {isFocused && song.reason && (
+                                <div className="text-xs text-red-400 mt-1 truncate max-w-[200px]">
+                                  {song.reason}
+                                </div>
+                              )}
                               {isFocused && (song.yt_title || song.sp_title) && (
                                 <div className="mt-1 border-t border-white pt-1">
                                   <p className="text-xs text-yellow-400 truncate max-w-[200px]">Matched:</p>
