@@ -299,6 +299,7 @@ function App() {
   // Remove dismissProcesses overlay state, just clear processes
   const dismissProcesses = () => {
     setProcesses([]);
+    setCurrentJobId(null); // This will clear the job from storage and stop polling
     if (currentJobId) {
       // Optionally, you could have an API endpoint to cancel/dismiss a job
     }

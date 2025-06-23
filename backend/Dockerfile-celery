@@ -1,0 +1,52 @@
+# --- Stage 1: Build Stage ---
+# Use an official Python image as a parent image.
+# The 'slim' version is smaller and good for production.
+FROM python:3.11-slim AS builder
+
+# Set the working directory in the container
+WORKDIR /app
+
+# Install build dependencies that might be needed by some Python packages
+RUN apt-get update && apt-get install -y --no-install-recommends gcc
+
+# Create a virtual environment to keep dependencies isolated
+RUN python -m venv /opt/venv
+
+# Make sure all subsequent commands use the venv
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Copy the requirements file into the container
+COPY backend/requirements.txt .
+
+# Install any needed packages specified in requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+
+# --- Stage 2: Final/Runtime Stage ---
+# Start fresh with a clean base image
+FROM python:3.11-slim
+
+# Set the working directory
+WORKDIR /app
+
+# Create a non-root user for security
+RUN addgroup --system app && adduser --system --group app
+
+# Copy the virtual environment from the builder stage
+COPY --from=builder /opt/venv /opt/venv
+
+# Copy the backend files to the root /app directory
+COPY backend/ .
+
+# Activate the virtual environment for subsequent commands
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Set Python path explicitly without relying on existing PYTHONPATH
+ENV PYTHONPATH="/app"
+
+# Switch to the non-root user
+USER app
+
+# Command to run when the container launches
+# This starts the Celery worker
+CMD ["celery", "-A", "celery_worker.celery_app", "worker", "--loglevel=info", "-Q", "jobs"]

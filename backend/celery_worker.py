@@ -16,17 +16,19 @@ load_dotenv()
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 celery_app = Celery(
-    "syncer",
+    "celery_worker",
     broker=REDIS_URL,
     backend=REDIS_URL,
-    include=['backend.tasks']  # Point to the tasks module
+    include=['tasks']
 )
 
 celery_app.conf.update(
     task_track_started=True,
 )
 
-# Optional: Route tasks to a specific queue
+# Optional: Route tasks to a specific queue using their full names
 celery_app.conf.task_routes = {
-    "backend.tasks.*": {"queue": "jobs"},
+    "tasks.run_sync_sp_to_yt_job": {"queue": "jobs"},
+    "tasks.run_sync_yt_to_sp_job": {"queue": "jobs"},
+    "tasks.run_merge_playlists_job": {"queue": "jobs"},
 }

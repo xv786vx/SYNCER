@@ -19,7 +19,7 @@ from spotipy.oauth2 import SpotifyOauthError
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.responses import FileResponse
-from backend.jobs import router as jobs_router
+from jobs import router as jobs_router
 
 load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), 'functions'))
