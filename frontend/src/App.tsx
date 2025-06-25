@@ -62,6 +62,8 @@ function App() {
   const [activeTab, setActiveTab] = usePersistentState<string>('activeTab', "1");
   const [displayedTab, setDisplayedTab] = usePersistentState<string>('displayedTab', "1"); // controls which tab's content is shown
   const [processes, setProcesses] = usePersistentState<Process[]>('processes', [])
+  const processesRef = useRef(processes);
+  processesRef.current = processes;
   const [songs, setSongs] = usePersistentState<SongStatus[]>('songs', [])
   const [ytToSpSongs, setYtToSpSongs] = usePersistentState<SongStatus[]>('ytToSpSongs', [])
   const [toast, setToast] = useState<string | null>(null)
@@ -497,8 +499,14 @@ function App() {
             ? prev.process.countdownEnd // keep the original countdownEnd
             : Date.now() + timeEstimate! * 1000; // set only the first time
         } else {
-          // This branch should now be less common for existing jobs
-          countdownEnd = prev ? prev.process.countdownEnd : Date.now() + 3600 * 1000;
+          // On resume, `prev` is empty. Check the persisted state via the ref.
+          const existingProcess = processesRef.current.find(p => p.id === job_id);
+          if (existingProcess?.countdownEnd) {
+            countdownEnd = existingProcess.countdownEnd;
+          } else {
+            // Fallback for new jobs without an estimate.
+            countdownEnd = prev ? prev.process.countdownEnd : Date.now() + 3600 * 1000;
+          }
         }
         const process: Process = {
           id: job_id,
