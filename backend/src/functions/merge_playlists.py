@@ -77,3 +77,5 @@ def merge_playlists(yt_name, sp_name, merge_name, user_id, db):
             #     continue
     if need_to_add:
         yt.add_to_playlist(merge_id, need_to_add, db)
+
+    return f"Successfully merged '{yt_name}' and '{sp_name}' into '{merge_name}'!"

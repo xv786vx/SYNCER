@@ -1,5 +1,83 @@
 import { Process } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';
+import { useState, useEffect } from 'react';
+
+interface ProcessItemProps {
+  process: Process;
+}
+
+function ProcessItem({ process }: ProcessItemProps) {
+  const [remainingTime, setRemainingTime] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (process.countdownEnd && process.status === 'in-progress') {
+      const calculateRemaining = () => {
+        const remaining = Math.round((process.countdownEnd! - Date.now()) / 1000);
+        setRemainingTime(remaining > 0 ? remaining : 0);
+      };
+
+      calculateRemaining(); // Initial calculation
+      const interval = setInterval(calculateRemaining, 1000);
+
+      return () => clearInterval(interval);
+    } else {
+      setRemainingTime(null); // No countdown if not in-progress or no end time
+    }
+  }, [process.countdownEnd, process.status]);
+
+  // Determine main message and sub-message
+  let mainText = process.message || '';
+  let subText: string | null = null;
+
+  // If we have a live countdown, it takes precedence.
+  if (remainingTime !== null) {
+    mainText = `Syncing "${process.playlistName}"...`;
+    if (remainingTime > 0) {
+      subText = `(Est. ${remainingTime}s)`;
+    } else {
+      mainText = `Still working on "${process.playlistName}"...`;
+    }
+  } else {
+    // No live countdown, check if the original message has a static estimate.
+    const match = mainText.match(/(.*) (\(Est\. \d+s\))/);
+    if (match) {
+        mainText = match[1].trim();
+        subText = match[2];
+    }
+  }
+
+  const getStatusClass = () => {
+    switch (process.status) {
+      case 'completed':
+        return 'bg-green-900';
+      case 'error':
+        return 'bg-red-900';
+      case 'in-progress':
+      case 'pending':
+        return 'bg-none';
+      default:
+        return 'bg-neutral-700';
+    }
+  };
+
+  return (
+    <div className={`text-sm p-3 rounded-lg text-center ${getStatusClass()}`}>
+      <div className="flex flex-col items-center justify-center">
+        <span className="font-medium text-center">{mainText}</span>
+        {subText && (
+          <span className="font-light text-xs text-neutral-400 text-center mt-1">
+            {subText}
+          </span>
+        )}
+        {process.status === 'in-progress' && (
+          <div className="mt-3 mb-1 flex flex-col items-center">
+            <LoadingSpinner size={48} color="#fff" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 interface ProcessesOverlayProps {
   processes: Process[];
@@ -30,24 +108,7 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
         <h3 className="text-lg font-semibold mb-4 text-center">Processes</h3>
         <div className="space-y-3">
           {processes.map(process => (
-            <div
-              key={process.id}
-              className={`text-sm p-3 rounded-lg text-center ${
-                process.status === 'completed' ? 'bg-green-900' :
-                process.status === 'error' ? 'bg-red-900' :
-                process.status === 'in-progress' ? 'bg-none' :
-                'bg-neutral-700'
-              }`}
-            >
-              <div className="flex flex-col items-center justify-center">
-                <span className="font-medium text-center">{process.message}</span>
-                {process.status === 'in-progress' && (
-                  <div className="mt-3 mb-1 flex flex-col items-center">
-                    <LoadingSpinner size={48} color="#fff" />
-                  </div>
-                )}
-              </div>
-            </div>
+            <ProcessItem key={process.id} process={process} />
           ))}
         </div>
       </div>

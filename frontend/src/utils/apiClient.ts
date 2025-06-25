@@ -47,33 +47,28 @@ export async function getThing(url: string) {
   }, "Failed to fetch data");
 }
 
-// Get auto-matched songs for Spotify → YouTube
-export async function syncSpToYt(playlistName: string, userId: string) {
-  const url = `${API_BASE_URL}/api/sync_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
+// Get number of tracks in a Spotify playlist
+export async function getSpPlaylistTrackCount(
+  playlistName: string,
+  userId: string
+): Promise<{ track_count: number } | null> {
+  const url = `${API_BASE_URL}/api/sp_playlist_track_count?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
   return withErrorHandling(async () => {
     const response = await fetchApi(url);
     return APIErrorHandler.handleResponse(response);
-  }, "Failed to sync Spotify playlist to YouTube");
+  }, "Failed to get Spotify playlist track count");
 }
 
-// Finalize playlist creation on YouTube
-export async function finalizeSpToYt(
+// Get number of tracks in a YouTube playlist
+export async function getYtPlaylistTrackCount(
   playlistName: string,
-  ytIds: string[],
   userId: string
-) {
-  const url = `${API_BASE_URL}/api/finalize_sp_to_yt`;
+): Promise<{ track_count: number } | null> {
+  const url = `${API_BASE_URL}/api/yt_playlist_track_count?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
   return withErrorHandling(async () => {
-    const response = await fetchApi(url, {
-      method: "POST",
-      body: JSON.stringify({
-        playlist_name: playlistName,
-        yt_ids: ytIds,
-        user_id: userId,
-      }),
-    });
+    const response = await fetchApi(url);
     return APIErrorHandler.handleResponse(response);
-  }, "Failed to finalize Spotify to YouTube sync");
+  }, "Failed to get YouTube playlist track count");
 }
 
 // Manual search for a song on YouTube
@@ -91,35 +86,6 @@ export async function manualSearchSpToYt(
   }, "Failed to perform manual search");
 
   return result || [];
-}
-
-// Get auto-matched songs for YouTube → Spotify
-export async function syncYtToSp(playlistName: string, userId: string) {
-  const url = `${API_BASE_URL}/api/sync_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
-  return withErrorHandling(async () => {
-    const response = await fetchApi(url);
-    return APIErrorHandler.handleResponse(response);
-  }, "Failed to sync YouTube playlist to Spotify");
-}
-
-// Finalize playlist creation on Spotify
-export async function finalizeYtToSp(
-  playlistName: string,
-  spIds: string[],
-  userId: string
-) {
-  const url = `${API_BASE_URL}/api/finalize_yt_to_sp`;
-  return withErrorHandling(async () => {
-    const response = await fetchApi(url, {
-      method: "POST",
-      body: JSON.stringify({
-        playlist_name: playlistName,
-        sp_ids: spIds,
-        user_id: userId,
-      }),
-    });
-    return APIErrorHandler.handleResponse(response);
-  }, "Failed to finalize YouTube to Spotify sync");
 }
 
 // Manual search for a song on Spotify
@@ -188,20 +154,6 @@ export async function setYoutubeQuota(quotaValue: number) {
     });
     return APIErrorHandler.handleResponse(response);
   }, "Failed to set YouTube quota usage");
-}
-
-// Merge Spotify and YouTube playlists
-export async function mergePlaylists(
-  ytPlaylist: string,
-  spPlaylist: string,
-  mergeName: string,
-  userId: string
-) {
-  const url = `${API_BASE_URL}/api/merge_playlists?yt_playlist=${encodeURIComponent(ytPlaylist)}&sp_playlist=${encodeURIComponent(spPlaylist)}&merge_name=${encodeURIComponent(mergeName)}&user_id=${encodeURIComponent(userId)}`;
-  return withErrorHandling(async () => {
-    const response = await fetchApi(url);
-    return APIErrorHandler.handleResponse(response);
-  }, "Failed to merge playlists");
 }
 
 // Download a YouTube song
@@ -276,11 +228,84 @@ export async function startSpotifyOAuth(userId: string) {
   }
 }
 
-// Get sync status for a user
-export async function getSyncStatus(userId: string) {
-  const url = `${API_BASE_URL}/api/sync_status?user_id=${encodeURIComponent(userId)}`;
+// --- NEW ASYNC JOB-BASED FUNCTIONS ---
+
+// Start a Spotify to YouTube sync job
+export async function startSyncSpToYt(playlistName: string, userId: string) {
+  const url = `${API_BASE_URL}/jobs/sync_sp_to_yt`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url, {
+      method: "POST",
+      body: JSON.stringify({ playlist_name: playlistName, user_id: userId }),
+    });
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to start Spotify to YouTube sync job");
+}
+
+// Start a YouTube to Spotify sync job
+export async function startSyncYtToSp(playlistName: string, userId: string) {
+  const url = `${API_BASE_URL}/jobs/sync_yt_to_sp`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url, {
+      method: "POST",
+      body: JSON.stringify({ playlist_name: playlistName, user_id: userId }),
+    });
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to start YouTube to Spotify sync job");
+}
+
+// Start a merge playlists job
+export async function startMergePlaylists(
+  ytPlaylist: string,
+  spPlaylist: string,
+  mergeName: string,
+  userId: string
+) {
+  const url = `${API_BASE_URL}/jobs/merge_playlists`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url, {
+      method: "POST",
+      body: JSON.stringify({
+        yt_playlist: ytPlaylist,
+        sp_playlist: spPlaylist,
+        new_playlist_name: mergeName,
+        user_id: userId,
+      }),
+    });
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to start merge playlists job");
+}
+
+// Get the status of a running job
+export async function getJobStatus(jobId: string) {
+  const url = `${API_BASE_URL}/jobs/${jobId}`;
   return withErrorHandling(async () => {
     const response = await fetchApi(url);
     return APIErrorHandler.handleResponse(response);
-  }, "Failed to get sync status");
+  }, "Failed to get job status");
+}
+
+// Get the latest job for a user
+export async function getLatestJob(userId: string) {
+  const url = `${API_BASE_URL}/jobs/latest/${userId}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    // It's okay if this fails with a 404, so we handle that gracefully
+    if (response.status === 404) {
+      return null;
+    }
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to get the latest job");
+}
+
+// Finalize a job
+export async function finalizeJob(jobId: string) {
+  const url = `${API_BASE_URL}/jobs/${jobId}/finalize`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url, {
+      method: "POST",
+      body: JSON.stringify({}), // Finalize might not need a body
+    });
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to finalize job");
 }

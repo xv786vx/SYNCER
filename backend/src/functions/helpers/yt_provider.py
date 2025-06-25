@@ -179,16 +179,39 @@ class YoutubeProvider(Provider):
         all_videos_found = []
         
         for query in search_queries:
-            search = VideosSearch(query, limit=10)
-            response = search.result().get('result', [])
-            
-            if not response:
+            try:
+                search = VideosSearch(query, limit=10)
+                search_result = search.result()
+
+                # Defensive check against None or malformed responses
+                if not search_result or 'result' not in search_result:
+                    print(f"YouTube search returned no result for query: {query}")
+                    continue
+
+                response = search_result['result']
+                if response is None:
+                    print(f"YouTube search returned 'result: None' for query: {query}")
+                    continue
+
+            except Exception as e:
+                print(f"An exception occurred during YouTube search for query '{query}': {e}")
                 continue
-            
+
             for item in response:
-                yt_video_title = item['title']
-                yt_channel_name = item['channel']['name']
-                video_id = item['id']
+                if not item or not isinstance(item, dict):
+                    continue
+
+                yt_video_title = item.get('title')
+                yt_channel_info = item.get('channel')
+                video_id = item.get('id')
+
+                # Ensure essential fields are present
+                if not all([yt_video_title, yt_channel_info, video_id]):
+                    continue
+
+                yt_channel_name = yt_channel_info.get('name')
+                if not yt_channel_name:
+                    continue
                 
                 # Skip if we've already seen this video
                 if video_id in [v[0] for v in all_videos_found]:
@@ -350,42 +373,50 @@ class YoutubeProvider(Provider):
     
 
     def get_playlist_by_name(self, playlist_name, db):
-        self._check_authenticated()
-        """given a Youtube playlist name, return the playlist's information.
-
-        Args:
-            playlist_name (str): a playlist name to search for.
-
-        Returns:
-            dict: {'title': playlist name, 'id': playlist id, 'description': playlist description, 'image': playlist image}
-        """
-        playlists = self.get_playlists(db)
-        if playlists is None:
-            print(f"Could not retrieve playlists. Please check your authorization.")
-            return None
+        """given a Youtube playlist name, return the playlist's information."""
+        if not self._check_authenticated():
+            raise Exception("YouTube authentication required.")
         
-        for pl in playlists:
-            if pl['title'].lower() == playlist_name.lower():  # Case-insensitive comparison
-                return {
-                    'title': pl['title'],
-                    'id': pl['id'],
-                    'description': pl.get('description', ''),
-                    'image': pl.get('image', None),
-                }
-        return None 
+        print("Attempting to execute self.youtube.playlists().list...")
+        try:
+            request = self.youtube.playlists().list(
+                part="snippet,contentDetails",
+                mine=True,
+                maxResults=50
+            )
+            
+            while request:
+                response = request.execute()
+                increment_quota(db, 1) 
+
+                for playlist in response.get('items', []):
+                    if playlist['snippet']['title'].lower() == playlist_name.lower():
+                        return {
+                            'id': playlist['id'],
+                            'title': playlist['snippet']['title'],
+                            'description': playlist['snippet'].get('description', ''),
+                            'itemCount': playlist['contentDetails']['itemCount']
+                        }
+                
+                request = self.youtube.playlists().list_next(request, response)
+
+            return None
+        except Exception as e:
+            print(f"Failed to get playlists: {e}")
+            return None
 
 
     def get_playlist_items(self, playlist_id, db):
-        self._check_authenticated()
-        """Given a Youtube playlist id, return the track's title, artists and id of each track in the playlist.
-
+        """given a playlist id, return a list of all tracks in it.
+        
         Args:
             playlist_id (str): a valid Youtube playlist id.
 
         Returns:
            list[dict]: [{'title': track title, 'id': track id, 'artist': track artist}, ...]
         """
-        playlist_items = []
+        tracks_info = []
+        
         request = self.youtube.playlistItems().list(part="snippet", playlistId=playlist_id, maxResults=25)
     
         while request:
@@ -395,19 +426,27 @@ class YoutubeProvider(Provider):
             increment_quota(db, count=1)
             
             # Add the current batch of items to the playlist_items list
-            playlist_items.extend([
-                {
-                    'title': item['snippet']['title'],
-                    'id': item['snippet']['resourceId']['videoId'],
-                    'artist': item['snippet']['videoOwnerChannelTitle']
-                }
-                for item in response['items']
-            ])
+            for item in response['items']:
+                snippet = item.get('snippet')
+                if snippet and snippet.get('resourceId') and snippet.get('resourceId', {}).get('videoId'):
+                    tracks_info.append({
+                        'title': snippet.get('title', 'Untitled'),
+                        'id': snippet['resourceId']['videoId'],
+                        'artist': snippet.get('videoOwnerChannelTitle', 'Unknown Artist'),
+                        'is_unplayable': False
+                    })
+                else:
+                    tracks_info.append({
+                        'title': 'Unplayable/Deleted Video',
+                        'id': None,
+                        'artist': 'N/A',
+                        'is_unplayable': True
+                    })
             
             # Check if there's a next page
             request = self.youtube.playlistItems().list_next(request, response)
     
-        return playlist_items
+        return tracks_info
     
 
     def add_to_playlist(self, playlist_id, item_ids, db) -> None:
@@ -520,3 +559,10 @@ class YoutubeProvider(Provider):
         }
 
         yt_dlp.YoutubeDL(ydl_opts).download([playlist_url])
+
+    def get_playlist_track_count(self, playlist_name, db):
+        """given a YouTube playlist name, return the number of tracks."""
+        playlist = self.get_playlist_by_name(playlist_name, db)
+        if playlist and 'itemCount' in playlist:
+            return playlist['itemCount']
+        return None

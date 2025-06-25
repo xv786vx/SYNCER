@@ -5,6 +5,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 
 export interface ManualSearchResult {
   yt_id: string;
+  sp_id?: string;
   title: string;
   artist: string;
   thumbnail: string;
@@ -68,11 +69,11 @@ export function ManualSearchModal({
         onClick={(e: React.MouseEvent) => e.stopPropagation()}
       >
         <div className="flex-shrink-0">
-          <h3 className="text-lg font-semibold mb-2 text-center">Manual Search</h3>
-          <p className="text-center text-gray-400 mb-1 text-sm">
+          <h3 className="text-xl font-semibold mb-2 text-center">Manual Search</h3>
+          <p className="text-center text-gray-400 mb-1 text-sm truncate whitespace-nowrap overflow-hidden">
             Searching for: <span className="font-bold text-brand-green">{song.name}</span>
           </p>
-          <p className="text-center text-gray-400 mb-1 text-xs">
+          <p className="text-center text-gray-400 mb-3 text-xs truncate whitespace-nowrap overflow-hidden">
             by <span className="font-bold text-brand-green">{song.artist}</span>
           </p>
           
@@ -96,7 +97,7 @@ export function ManualSearchModal({
               disabled={loading}
               className="bg-brand-green-dark hover:bg-brand-green text-white font-bold py-1.5 px-4 rounded transition-colors duration-200 disabled:opacity-50"
             >
-              {loading ? <LoadingSpinner size={20} /> : 'Search'}
+              {loading ? <LoadingSpinner size={18} /> : 'Search'}
             </button>
           </div>
         </div>
@@ -106,7 +107,7 @@ export function ManualSearchModal({
         <div className="mt-4 flex-grow overflow-y-auto hide-scrollbar pr-2">
           {results.map((result) => (
             <div
-              key={result.yt_id}
+              key={result.yt_id || result.sp_id}
               className="flex items-center gap-4 p-2 rounded-lg hover:bg-neutral-800 cursor-pointer"
               onClick={() => handleSelect(result)}
             >

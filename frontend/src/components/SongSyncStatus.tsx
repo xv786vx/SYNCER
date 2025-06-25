@@ -73,7 +73,7 @@ export function SongSyncStatus({
               className="flex flex-col items-center justify-center h-32 w-full"
             >
               <LoadingSpinner size={36} color="#fff" />
-              <div className="mt-6 text-sm text-white">Finalizing sync...</div>
+              <div className="mt-6 text-sm text-white">Finalizing sync... (Please wait until the process is complete!)</div>
             </motion.div>
           ) : (
             <motion.div
@@ -142,11 +142,20 @@ export function SongSyncStatus({
                             <div className="flex-1">
                               <div className="text-sm font-semibold truncate max-w-[200px]">{song.name}</div>
                               <div className="text-xs opacity-70 truncate max-w-[200px]">{song.artist}</div>
-                              {isFocused && song.yt_title && (
+                              {isFocused && song.reason && (
+                                <div className="text-xs text-red-400 mt-1 truncate max-w-[200px]">
+                                  {song.reason}
+                                </div>
+                              )}
+                              {isFocused && (song.yt_title || song.sp_title) && (
                                 <div className="mt-1 border-t border-white pt-1">
                                   <p className="text-xs text-yellow-400 truncate max-w-[200px]">Matched:</p>
-                                  <p className="text-sm font-semibold text-white truncate max-w-[200px]">{song.yt_title}</p>
-                                  <p className="text-xs text-gray-300 truncate max-w-[200px]">{song.yt_artist}</p>
+                                  <p className="text-sm font-semibold text-white truncate max-w-[200px]">
+                                    {song.yt_title || song.sp_title}
+                                  </p>
+                                  <p className="text-xs text-gray-300 truncate max-w-[200px]">
+                                    {song.yt_artist || song.sp_artist}
+                                  </p>
                                 </div>
                               )}
                             </div>

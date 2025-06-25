@@ -6,15 +6,21 @@ export interface SongStatus {
   yt_title?: string;
   yt_artist?: string;
   sp_id?: string | null;
+  sp_title?: string;
+  sp_artist?: string;
   requires_manual_search: boolean;
   coverUrl?: string; // Optional cover art URL
+  reason?: string;
 }
 
 export interface Process {
   id: string;
   type: string;
-  status: "pending" | "in-progress" | "completed" | "error";
+  status: "pending" | "in-progress" | "completed" | "error" | "done";
   message: string;
+  subMessage?: string;
+  playlistName?: string; // Optional: for countdown message
+  countdownEnd?: number | undefined; // Optional: timestamp for countdown end
   interactive?: {
     type: "search" | "skip";
     songName: string;

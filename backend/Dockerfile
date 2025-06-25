@@ -8,6 +8,8 @@ ENV PYTHONUNBUFFERED=1
 # Set working directory
 WORKDIR /app
 
+ENV PYTHONPATH="/app"
+
 # Install dependencies
 COPY requirements.txt .
 RUN pip install --upgrade pip
