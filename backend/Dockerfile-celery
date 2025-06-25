@@ -16,7 +16,7 @@ RUN python -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # Copy the requirements file into the container
-COPY backend/requirements.txt .
+COPY requirements.txt .
 
 # Install any needed packages specified in requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
@@ -36,7 +36,9 @@ RUN addgroup --system app && adduser --system --group app
 COPY --from=builder /opt/venv /opt/venv
 
 # Copy the backend files to the root /app directory
-COPY backend/ .
+COPY . .
+
+RUN chmod -R a+w /app/src/auth_tokens
 
 # Activate the virtual environment for subsequent commands
 ENV PATH="/opt/venv/bin:$PATH"

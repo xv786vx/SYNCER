@@ -16,7 +16,7 @@ export interface SongStatus {
 export interface Process {
   id: string;
   type: string;
-  status: "pending" | "in-progress" | "completed" | "error";
+  status: "pending" | "in-progress" | "completed" | "error" | "done";
   message: string;
   subMessage?: string;
   playlistName?: string; // Optional: for countdown message
