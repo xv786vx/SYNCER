@@ -320,28 +320,42 @@ class SpotifyProvider(Provider):
             name=playlist_name, public=True, 
             description="made with SYNCER!"
         )
-        print(f"Created Spotify playlist: {playlist['name']} with ID: {playlist['id']}")
-        #return playlist
+        print(f"Created Spotify playlist: {playlist['name']} (ID: {playlist['id']})")
+        return playlist['id']
+    
 
 def is_spotify_authenticated(user_id):
-    token_json = get_spotify_token(user_id)
-    if not token_json:
-        print(f"[SpotifyToken] No token found in database for user_id: {user_id}")
-        return False
+    """
+    Checks if a user is authenticated with Spotify by attempting to create a
+    client and make a simple API call. This is more reliable than just checking
+    for a token in the database, as it also verifies the token is still valid
+    and refreshes it if necessary.
+    """
+    print(f"[SpotifyAuthCheck] Checking Spotify auth status for user_id: {user_id}")
     try:
-        token_info = json.loads(token_json)
-        # Check for access_token and expiry
-        if 'access_token' not in token_info:
-            print(f"[SpotifyToken] Token for user_id: {user_id} does not contain access_token")
+        # Attempt to create a SpotifyProvider, which will try to get a valid token
+        sp_provider = SpotifyProvider(user_id)
+        
+        # The ensure_client method will try to validate/refresh the token and get a client
+        sp_provider.ensure_client()
+        
+        # Make a simple, low-cost API call to verify authentication
+        # sp.me() is a good choice as it just gets the current user's profile
+        user_profile = sp_provider.sp.me()
+        
+        if user_profile and 'id' in user_profile:
+            print(f"[SpotifyAuthCheck] Successfully verified Spotify token for user_id: {user_id}. User: {user_profile['display_name']}")
+            return True
+        else:
+            print(f"[SpotifyAuthCheck] Token for user_id: {user_id} seems valid but failed to fetch profile.")
             return False
-        # Optionally check if token is expired
-        import time
-        if 'expires_at' in token_info and token_info['expires_at'] < int(time.time()):
-            print(f"[SpotifyToken] Token for user_id: {user_id} is expired")
-            return False
-        print(f"[SpotifyToken] Found valid token for user_id: {user_id}")
-        return True
+            
+    except SpotifyOauthError as e:
+        # This error is specifically for auth problems
+        print(f"[SpotifyAuthCheck] Spotify auth error for user_id {user_id}: {e}")
+        return False
     except Exception as e:
-        print(f"[SpotifyToken] Error parsing token for user_id: {user_id}: {e}")
+        # Catch any other exceptions during the process
+        print(f"[SpotifyAuthCheck] An unexpected error occurred while checking Spotify auth for user_id {user_id}: {e}")
         return False
 

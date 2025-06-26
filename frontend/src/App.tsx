@@ -79,6 +79,7 @@ function App() {
   const [overlayState, setOverlayState] = useState<'none' | 'processes' | 'finalizing' | 'songSyncStatus'>('none');
   const [, setFinalizingJobId] = useState<string | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
+  const isFinalizingRef = useRef(false);
 
   // New: Ready to sync if both Spotify and YouTube are authenticated
   const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
@@ -310,6 +311,7 @@ function App() {
 
   // --- Minimal fade-out for SongSyncStatus overlay ---
   const handleFinalizeSpToYt = async () => {
+    isFinalizingRef.current = true;
     setIsFinalizing(true);
     setOverlayState('finalizing');
     setFinalizingJobId(currentJobId);
@@ -325,6 +327,7 @@ function App() {
       // Don't set isFinalizing to false here, let the polling handle it
     } catch (error) {
       APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
+      isFinalizingRef.current = false;
       setIsFinalizing(false);
       setOverlayState('none');
       setFinalizingJobId(null);
@@ -332,6 +335,7 @@ function App() {
   };
 
   const handleFinalizeYtToSp = async () => {
+    isFinalizingRef.current = true;
     setIsFinalizing(true);
     setOverlayState('finalizing');
     setFinalizingJobId(currentJobId);
@@ -347,6 +351,7 @@ function App() {
       // Don't set isFinalizing to false here, let the polling handle it
     } catch (error) {
       APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
+      isFinalizingRef.current = false;
       setIsFinalizing(false);
       setOverlayState('none');
       setFinalizingJobId(null);
@@ -460,7 +465,7 @@ function App() {
       timeEstimate = numSongs * 4 + 5;
     }
 
-    if (isFinalizing && status !== 'completed' && status !== 'error') {
+    if (isFinalizingRef.current && status !== 'completed' && status !== 'error') {
       setOverlayState('finalizing');
       return;
     }
@@ -520,7 +525,7 @@ function App() {
         setProcesses([process]);
       }
     } else if (status === 'ready_to_finalize') {
-      if (!isFinalizing) {
+      if (!isFinalizingRef.current) {
         setProcesses([]);
         setIsFinalizing(false);
         if (type === 'sync_yt_to_sp') {
@@ -534,11 +539,11 @@ function App() {
         setProcessFadeOut(false);
       }
     } else if (status === 'completed') {
+      isFinalizingRef.current = false;
       setIsFinalizing(false);
       setProcesses([{ id: job_id, type: type || 'sync', status: 'completed', message: 'Sync complete!', playlistName: playlist_name }]);
       setSongs([]);
       setYtToSpSongs([]);
-      setCurrentJobId(null);
       setToast('Sync finalized successfully');
       setOverlayState('processes');
       setProcessFadeOut(false);
@@ -551,15 +556,16 @@ function App() {
           setProcesses([]);
           setSongs([]);
           setYtToSpSongs([]);
+          setCurrentJobId(null); // Clear job ID at the very end
           setProcessFadeOut(false);
         }, 400);
       }, 2000);
     } else if (status === 'error') {
+      isFinalizingRef.current = false;
       setIsFinalizing(false);
       setProcesses([{ id: job_id, type: type || 'sync', status: 'error', message: error || 'An unknown error occurred.', playlistName: playlist_name }]);
       setSongs([]);
       setYtToSpSongs([]);
-      setCurrentJobId(null);
       setOverlayState('processes');
       setProcessFadeOut(false);
       bestProcessRef.current = {};
@@ -570,12 +576,13 @@ function App() {
           setProcesses([]);
           setSongs([]);
           setYtToSpSongs([]);
+          setCurrentJobId(null); // Clear job ID at the very end
           setProcessFadeOut(false);
         }, 400);
       }, 2000);
     }
-  }, [fetchQuota, setProcesses, setSongs, setYtToSpSongs, setCurrentJobId, setToast, setOverlayState, setProcessFadeOut, setIsFinalizing, isFinalizing]);
-  
+  }, [fetchQuota, setProcesses, setSongs, setYtToSpSongs, setCurrentJobId, setToast, setOverlayState, setProcessFadeOut, setIsFinalizing]);
+
   // Polling logic for job status
   useEffect(() => {
     if (!currentJobId) {

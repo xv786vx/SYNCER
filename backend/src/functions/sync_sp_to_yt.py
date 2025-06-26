@@ -1,3 +1,4 @@
+from src.functions.helpers.provider import preprocess_title
 from src.functions.helpers.sp_provider import SpotifyProvider
 from src.functions.helpers.yt_provider import YoutubeProvider
 
@@ -15,9 +16,24 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db):
 
     # 3. check if same playlist exists in youtube, if not then make it
     print(f"Checking if {pl_info['title']} exists in YouTube account...")
-    if yt.get_playlist_by_name(playlist_to_modify, db) is None:
+    yt_playlist = yt.get_playlist_by_name(playlist_to_modify, db)
+    if yt_playlist is None:
         print(f"Playlist {playlist_to_modify} not found in YouTube, creating it now...")
         yt.create_playlist(playlist_to_modify, db)
+        yt_playlist = yt.get_playlist_by_name(playlist_to_modify, db)
+
+    # Get items from the YouTube playlist to check for existing songs
+    yt_playlist_items = []
+    if yt_playlist:
+        print(f"Fetching items from YouTube playlist '{yt_playlist['title']}'...")
+        yt_playlist_items = yt.get_playlist_items(yt_playlist['id'], db)
+    else:
+        print(f"Could not find or create YouTube playlist '{playlist_to_modify}'.")
+        return []
+
+    # Create a set of preprocessed titles for efficient lookup
+    existing_yt_titles = {preprocess_title(track['title']) for track in yt_playlist_items if 'title' in track}
+    print(f"Found {len(existing_yt_titles)} existing tracks in the YouTube playlist.")
 
     # 4. Add each song from spotify to youtube playlist
     print(f"(Step 2) Syncing {pl_info['title']}, {pl_info['id']} to Youtube...")
@@ -47,6 +63,12 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db):
         result = yt.search_auto(song, artists)
 
         if result is not None:
+            found_yt_title = result[3]
+            processed_found_title = preprocess_title(found_yt_title)
+            if processed_found_title in existing_yt_titles:
+                print(f"Found song '{found_yt_title}' which already exists in the YouTube playlist. Skipping.")
+                continue
+            
             t_to_sync_yt.append({
                 "name": song,
                 "artist": artists,
@@ -66,7 +88,4 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db):
             })
 
     return t_to_sync_yt
-
-
-# test case: Free Kutter (feat. Jay Electronica)
 
