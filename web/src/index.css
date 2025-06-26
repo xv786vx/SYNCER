@@ -58,6 +58,54 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
+/* Custom dither animations */
+@keyframes dither-wave {
+  0% {
+    transform: translateX(-10px) translateY(-5px);
+    opacity: 0.1;
+  }
+  25% {
+    opacity: 0.3;
+  }
+  50% {
+    transform: translateX(10px) translateY(5px);
+    opacity: 0.2;
+  }
+  75% {
+    opacity: 0.25;
+  }
+  100% {
+    transform: translateX(-10px) translateY(-5px);
+    opacity: 0.1;
+  }
+}
+
+@keyframes dither-wave-reverse {
+  0% {
+    transform: translateX(8px) translateY(3px);
+    opacity: 0.05;
+  }
+  33% {
+    opacity: 0.15;
+  }
+  66% {
+    transform: translateX(-8px) translateY(-3px);
+    opacity: 0.1;
+  }
+  100% {
+    transform: translateX(8px) translateY(3px);
+    opacity: 0.05;
+  }
+}
+
+.animate-dither-wave {
+  animation: dither-wave 8s ease-in-out infinite;
+}
+
+.animate-dither-wave-reverse {
+  animation: dither-wave-reverse 12s ease-in-out infinite;
+}
+
 @media (prefers-color-scheme: light) {
   :root {
     color: #213547;

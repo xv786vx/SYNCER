@@ -16,6 +16,8 @@ export function usePersistentState<T>(
   const valueRef = useRef(value);
   valueRef.current = value;
   const debounceTimerRef = useRef<number | null>(null);
+  const isWritingRef = useRef(false);
+  const writeTimeoutRef = useRef<number | null>(null);
 
   // On initial mount, load the value from storage.
   useEffect(() => {
@@ -54,6 +56,7 @@ export function usePersistentState<T>(
 
     // Set a new timer
     debounceTimerRef.current = window.setTimeout(() => {
+      isWritingRef.current = true;
       // Use chrome.storage.local if available
       if (window.chrome && chrome.storage && chrome.storage.local) {
         chrome.storage.local.set({ [key]: value });
@@ -65,11 +68,21 @@ export function usePersistentState<T>(
           console.error(`Error setting localStorage key “${key}”:`, error);
         }
       }
+
+      if (writeTimeoutRef.current) {
+        clearTimeout(writeTimeoutRef.current);
+      }
+      writeTimeoutRef.current = window.setTimeout(() => {
+        isWritingRef.current = false;
+      }, 100);
     }, 250); // Debounce for 250ms
 
     return () => {
       if (debounceTimerRef.current) {
         clearTimeout(debounceTimerRef.current);
+      }
+      if (writeTimeoutRef.current) {
+        clearTimeout(writeTimeoutRef.current);
       }
     };
   }, [key, value]);
@@ -81,6 +94,10 @@ export function usePersistentState<T>(
         changes: { [key: string]: chrome.storage.StorageChange },
         areaName: string
       ) => {
+        if (isWritingRef.current) {
+          return;
+        }
+
         if (areaName === "local" && key in changes) {
           // This check prevents an infinite loop by comparing the new value
           // from storage with the current value in our state (via a ref).

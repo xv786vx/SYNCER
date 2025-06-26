@@ -129,7 +129,7 @@ void main() {
   } else {
     outColor = floor(blockF * (colorNum - 1.0) + threshold) / (colorNum - 1.0);
   }
-  outColor = clamp(outColor * 0.3, 0.0, 1.0); // Keep darkening
+  outColor = clamp(outColor * 0.15, 0.0, 1.0); // Keep darkening
   gl_FragColor = vec4(vec3(outColor), 1.0);
 }
 `;

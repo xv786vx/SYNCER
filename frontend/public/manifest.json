@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "version": "1.0",
+  "version": "1.07",
   "name": "SYNCER",
   "description": "Sync your music playlists across YouTube and Spotify!",
   "action": {
