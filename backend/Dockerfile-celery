@@ -40,6 +40,9 @@ COPY . .
 
 RUN chmod -R a+w /app/src/auth_tokens
 
+# Create a directory for celery beat schedule and give ownership to the app user
+RUN mkdir /app/celery_data && chown -R app:app /app/celery_data
+
 # Activate the virtual environment for subsequent commands
 ENV PATH="/opt/venv/bin:$PATH"
 
@@ -50,5 +53,5 @@ ENV PYTHONPATH="/app"
 USER app
 
 # Command to run when the container launches
-# This starts the Celery worker
-CMD ["celery", "-A", "celery_worker.celery_app", "worker", "--loglevel=info", "-Q", "jobs"]
+# This starts the Celery worker and the embedded scheduler (beat)
+CMD ["celery", "-A", "celery_worker.celery_app", "worker", "--loglevel=info", "-B", "-s", "/app/celery_data/celerybeat-schedule", "-Q", "jobs,cleanup"]

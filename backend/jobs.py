@@ -1,16 +1,17 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Depends
+from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from src.db import Job, Base
-from src.db.youtube_token import SessionLocal  # or your session factory
+from db_models import Job, SessionLocal
 import datetime
 import uuid
-from celery_worker import celery_app
 import time
+import re
 from pydantic import BaseModel
 import logging
-from tasks import run_sync_sp_to_yt_job, run_sync_yt_to_sp_job, run_merge_playlists_job
-from src.functions.helpers.yt_provider import YoutubeProvider
-from src.functions.helpers.sp_provider import SpotifyProvider
+from tasks import run_sync_sp_to_yt_job, run_sync_yt_to_sp_job, run_merge_playlists_job, run_finalize_job
+from src.db.youtube_quota import get_total_quota_used
+from src.functions.helpers.sp_provider import get_spotify_client
+from spotipy import SpotifyException
+import math
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -34,8 +35,69 @@ def get_db():
     finally:
         db.close()
 
+def validate_playlist_name(playlist_name: str):
+    """Raises HTTPException if the playlist name contains invalid characters."""
+    # This regex looks for characters that are often problematic in file paths or URLs.
+    if re.search(r'[\\/\[\]+?#&%*|<>"\']', playlist_name):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Playlist name ''{playlist_name}'' contains invalid characters. Please rename the playlist and try again."
+        )
+
 @router.post("/sync_sp_to_yt", status_code=202)
 def start_sync_sp_to_yt(request: SyncRequest, db: Session = Depends(get_db)):
+    validate_playlist_name(request.playlist_name)
+
+    # --- YouTube Quota Pre-calculation ---
+    QUOTA_PER_SONG_SP_TO_YT = 51  # 1 for list, 50 for insert
+    QUOTA_LIMIT = 10000
+    QUOTA_BUFFER = 500 # Keep a 500 unit buffer
+
+    try:
+        # 1. Get current quota usage
+        current_usage = get_total_quota_used(db)
+        available_quota = QUOTA_LIMIT - current_usage - QUOTA_BUFFER
+
+        # 2. Get Spotify playlist track count
+        sp = get_spotify_client(request.user_id)
+        if not sp:
+            raise HTTPException(status_code=401, detail="Spotify authentication required.")
+        
+        playlists = sp.current_user_playlists()
+        target_playlist = next((p for p in playlists.get('items', []) if p['name'] == request.playlist_name), None)
+        if not target_playlist:
+            raise HTTPException(status_code=404, detail=f"Spotify playlist '{request.playlist_name}' not found.")
+        
+        track_count = target_playlist['tracks']['total']
+        estimated_cost = track_count * QUOTA_PER_SONG_SP_TO_YT
+
+        song_limit = None
+        job_notes = None
+
+        # 3. Decision Logic
+        if estimated_cost > available_quota:
+            songs_to_sync = math.floor(available_quota / QUOTA_PER_SONG_SP_TO_YT)
+            if songs_to_sync < 1:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Insufficient YouTube API quota to sync any songs. Please try again after the quota resets."
+                )
+            # Partial sync is possible
+            song_limit = songs_to_sync
+            job_notes = f"Sync limited to {songs_to_sync} of {track_count} songs due to YouTube API quota."
+            logger.info(f"Partial sync for playlist '{request.playlist_name}'. Song limit: {song_limit}")
+
+    except SpotifyException as e:
+        logger.error(f"Spotify API error for user {request.user_id}: {e}")
+        raise HTTPException(status_code=401, detail="Could not connect to Spotify. Please re-authenticate.")
+    except HTTPException as e:
+        # Re-raise HTTPExceptions to be handled by FastAPI
+        raise e
+    except Exception as e:
+        logger.error(f"Error during quota pre-calculation for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while checking API quotas.")
+
+    # --- Job Creation ---
     job_id = uuid.uuid4()
     logger.info(f"Starting sync job {job_id} for playlist '{request.playlist_name}'")
     
@@ -45,6 +107,7 @@ def start_sync_sp_to_yt(request: SyncRequest, db: Session = Depends(get_db)):
         type="sync_sp_to_yt",
         status="pending",
         playlist_name=request.playlist_name,
+        job_notes=job_notes # Add the note here
     )
     db.add(job)
     db.commit()
@@ -52,7 +115,7 @@ def start_sync_sp_to_yt(request: SyncRequest, db: Session = Depends(get_db)):
     
     logger.info(f"Queueing task run_sync_sp_to_yt_job for job {job_id}")
     result = run_sync_sp_to_yt_job.apply_async(
-        args=(str(job_id), request.playlist_name, request.user_id),
+        args=(str(job_id), request.playlist_name, request.user_id, song_limit), # Pass song_limit
         queue='jobs'
     )
     logger.info(f"Task queued with task_id: {result.id}")
@@ -61,6 +124,7 @@ def start_sync_sp_to_yt(request: SyncRequest, db: Session = Depends(get_db)):
 
 @router.post("/sync_yt_to_sp", status_code=202)
 def start_sync_yt_to_sp(request: SyncRequest, db: Session = Depends(get_db)):
+    validate_playlist_name(request.playlist_name)
     job_id = uuid.uuid4()
     logger.info(f"Starting sync job {job_id} for playlist '{request.playlist_name}'")
     
@@ -86,6 +150,9 @@ def start_sync_yt_to_sp(request: SyncRequest, db: Session = Depends(get_db)):
 
 @router.post("/merge_playlists", status_code=202)
 def start_merge_playlists(request: MergeRequest, db: Session = Depends(get_db)):
+    validate_playlist_name(request.new_playlist_name)
+    validate_playlist_name(request.yt_playlist)
+    validate_playlist_name(request.sp_playlist)
     job_id = uuid.uuid4()
     logger.info(f"Starting merge job {job_id} for '{request.new_playlist_name}'")
     
@@ -138,45 +205,14 @@ def finalize_job(job_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Job not found")
     
     if job.status != "ready_to_finalize":
-        raise HTTPException(status_code=400, detail="Job is not ready to finalize")
-    
-    try:
-        # Get the songs from the job result
-        songs = job.result.get("songs", []) if job.result else []
-        
-        if job.type == "sync_sp_to_yt":
-            # Finalize Spotify to YouTube sync
-            yt_ids = [song.get("yt_id") for song in songs if song.get("status") == "found" and song.get("yt_id")]
-            if yt_ids:
-                yt = YoutubeProvider(job.user_id)
-                pl_info = yt.get_playlist_by_name(job.playlist_name, db)
-                if pl_info is None:
-                    pl_info = yt.create_playlist(job.playlist_name, db)
-                playlist_id = pl_info['id']
-                yt.add_to_playlist(playlist_id, yt_ids, db)
-                
-        elif job.type == "sync_yt_to_sp":
-            # Finalize YouTube to Spotify sync
-            sp_ids = [song.get("sp_id") for song in songs if song.get("status") == "found" and song.get("sp_id")]
-            if sp_ids:
-                sp = SpotifyProvider(job.user_id)
-                pl_info = sp.get_playlist_by_name(job.playlist_name)
-                if pl_info is None:
-                    pl_info = sp.create_playlist(job.playlist_name)
-                playlist_id = pl_info['id']
-                sp.add_to_playlist(playlist_id, sp_ids)
-        
-        # Mark job as done
-        job.status = "completed"
-        job.updated_at = datetime.datetime.utcnow()
-        db.commit()
-        
-        return {"job_id": job_id, "status": "completed", "message": f"Playlist '{job.playlist_name}' created/updated successfully"}
-        
-    except Exception as e:
-        logger.error(f"Error finalizing job {job_id}: {str(e)}")
-        job.status = "error"
-        job.error = str(e)
-        job.updated_at = datetime.datetime.utcnow()
-        db.commit()
-        raise HTTPException(status_code=500, detail=f"Failed to finalize sync: {str(e)}")
+        raise HTTPException(status_code=400, detail=f"Job is not ready to finalize, current status is {job.status}")
+
+    # Update status to 'finalizing' and queue the background task
+    job.status = "finalizing"
+    job.updated_at = datetime.datetime.utcnow()
+    db.commit()
+
+    run_finalize_job.apply_async(args=[job_id], queue='jobs')
+
+    logger.info(f"Queued finalization for job {job_id}")
+    return {"job_id": job_id, "status": "finalizing"}

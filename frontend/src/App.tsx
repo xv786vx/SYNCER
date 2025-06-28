@@ -16,22 +16,29 @@ import { SongSyncStatus } from './components/SongSyncStatus';
 import { ToastContainer } from './components/Toast';
 import { ToastNotification } from './components/ToastNotification';
 import { ManualSearchModal, ManualSearchResult } from './components/ManualSearchModal';
-import type { SongStatus, Process, APIResponse, StatusResponse } from './types';
+import type { SongStatus, Process, APIResponse, StatusResponse, Job } from './types';
 import { motion, AnimatePresence } from 'framer-motion'
 import Dither from "./components/Dither";
 import { startYoutubeOAuth } from './utils/apiClient';
 import { getOrCreateUserId } from './utils/userId';
 import { usePersistentState } from './utils/usePersistentState';
 
-// Define a type for our jobs
-interface Job {
-  job_id: string;
-  status: 'pending' | 'in-progress' | 'ready_to_finalize' | 'completed' | 'error';
-  result?: { songs?: SongStatus[]; result?: string };
-  error?: string;
-  type?: 'sync_sp_to_yt' | 'sync_yt_to_sp' | 'merge';
-  playlist_name?: string;
+// New state for backend status
+enum BackendStatus {
+  CONNECTING,
+  ONLINE,
+  OFFLINE,
 }
+
+// Define a type for our jobs
+// interface Job {
+//   job_id: string;
+//   status: 'pending' | 'in-progress' | 'ready_to_finalize' | 'completed' | 'error';
+//   result?: { songs?: SongStatus[]; result?: string };
+//   error?: string;
+//   type?: 'sync_sp_to_yt' | 'sync_yt_to_sp' | 'merge';
+//   playlist_name?: string;
+// }
 
 function getMsUntilMidnightEST() {
   const now = new Date();
@@ -57,6 +64,7 @@ function formatMs(ms: number) {
 function App() {
   // Use persistent userId from Chrome storage or localStorage
   const [userId, setUserId] = useState<string | null>(null);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>(BackendStatus.CONNECTING);
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
   const [pendingTab, setPendingTab] = useState<string | null>(null);
   const [activeTab, setActiveTab] = usePersistentState<string>('activeTab', "1");
@@ -70,7 +78,7 @@ function App() {
   const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
   const [tabFade, setTabFade] = useState(true);
-  const [processFadeOut, setProcessFadeOut] = useState(false);
+  const [processFadeOut, ] = useState(false);
   const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
   const [manualSearchSong, setManualSearchSong] = useState<SongStatus | null>(null);
@@ -84,8 +92,28 @@ function App() {
   // New: Ready to sync if both Spotify and YouTube are authenticated
   const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
 
+  // Health check effect
+  useEffect(() => {
+    const checkBackend = async () => {
+      const result = await API.healthCheck();
+      if (result && result.status === 'ok') {
+        setBackendStatus(BackendStatus.ONLINE);
+      } else {
+        setBackendStatus(BackendStatus.OFFLINE);
+      }
+    };
+
+    // Check immediately on mount
+    checkBackend();
+
+    // Then check every 5 seconds
+    const interval = setInterval(checkBackend, 5000);
+
+    return () => clearInterval(interval);
+  }, []);
+
   // Fade in effect on tab change
-  const quotaExceeded = quota && quota.total >= quota.limit;
+  const quotaExceeded = !!(quota && quota.total >= quota.limit);
   useEffect(() => {
     setTabFade(false);
     const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
@@ -185,6 +213,16 @@ function App() {
     } catch (error) {
       setProcesses([]);
       setOverlayState('none');
+      // Type guard to check if it's an API error with a response
+      if (error && typeof error === 'object' && 'response' in error) {
+        const axiosError = error as { response: { status: number; data?: { detail?: string } } };
+        if (axiosError.response && axiosError.response.status === 429) {
+          const detail = axiosError.response.data?.detail || 'Insufficient YouTube API quota. Please try again later.';
+          setToast(detail);
+          return; // Stop further processing
+        }
+      }
+      // Fallback to the generic error handler
       APIErrorHandler.handleError(error as Error, 'Failed to start sync job');
     }
   };
@@ -445,143 +483,71 @@ function App() {
   const bestProcessRef = useRef<{ [jobId: string]: { message: string; hasEstimate: boolean; process: Process } }>({});
 
   const handleJobUpdate = useCallback((job: Job) => {
-    if (!job) {
-      setProcesses([]);
-      setSongs([]);
-      setYtToSpSongs([]);
-      setCurrentJobId(null);
-      setOverlayState('none');
-      setProcessFadeOut(false);
+    console.log("Handling job update", job);
+    const errorMessage = job.error || 'An unknown error occurred.';
+
+    if (job.status === "completed") {
+      const toastMessage = job.job_notes
+        ? job.job_notes
+        : `Sync of '${job.playlist_name}' complete.`;
+      setToast(toastMessage);
       setIsFinalizing(false);
-      bestProcessRef.current = {};
-      return;
-    }
-
-    const { job_id, status, result, error, type, playlist_name } = job;
-    let timeEstimate: number | undefined;
-    // Use the number of songs in the playlist for the estimate
-    const numSongs = (job.result?.songs?.length ?? 0);
-    if (numSongs > 0) {
-      timeEstimate = numSongs * 4 + 5;
-    }
-
-    if (isFinalizingRef.current && status !== 'completed' && status !== 'error') {
-      setOverlayState('finalizing');
-      return;
-    }
-
-    if (status === 'in-progress' || status === 'pending') {
-      const hasEstimate = typeof timeEstimate === 'number' && timeEstimate > 0;
-      const prev = bestProcessRef.current[job_id];
-
-      // If we already have a good estimate from the initial sync call,
-      // don't let the first few backend polls (which might lack the song count)
-      // overwrite it with a generic message.
-      if (prev && prev.hasEstimate && !hasEstimate) {
-        // We have a good estimate, but the current job update from the backend doesn't.
-        // This is a temporary race condition. Ignore this update and keep the good one.
-        return;
-      }
-
-      let message = `Syncing "${playlist_name || ''}"...`;
-      if (hasEstimate) {
-        message += ` (Est. ${timeEstimate}s)`;
-      }
-      setSongs([]);
-      setYtToSpSongs([]);
       setOverlayState('processes');
-      setProcessFadeOut(false);
+    } else if (job.status === "error") {
+      // If there are partial results, show them in SongSyncStatus overlay
+      if (job.result?.songs && job.result.songs.length > 0) {
+        setSongs(job.result.songs);
+        setOverlayState('songSyncStatus');
+      }
+      // Show error toast with job_notes if present
+      setToast(job.job_notes ? job.job_notes : `Error in job ${job.job_id}: ${errorMessage}`);
       setIsFinalizing(false);
-      
-      const prevHasEstimate = prev && prev.hasEstimate;
+      // If no partial results, show processes overlay
+      if (!job.result?.songs || job.result.songs.length === 0) {
+        setOverlayState('processes');
+      }
+    } else if (job.status === "ready_to_finalize") {
+      setSongs(job.result?.songs || []);
+      setOverlayState('songSyncStatus');
+    }
 
-      // This condition is now simpler because of the guard clause above,
-      // but we keep it to avoid needless re-renders if the message is identical.
-      if (!prev || prev.message !== message || (hasEstimate && !prevHasEstimate)) {
-        let countdownEnd = undefined;
-        if (hasEstimate) {
-          countdownEnd = prev && prevHasEstimate
-            ? prev.process.countdownEnd // keep the original countdownEnd
-            : Date.now() + timeEstimate! * 1000; // set only the first time
-        } else {
-          // On resume, `prev` is empty. Check the persisted state via the ref.
-          const existingProcess = processesRef.current.find(p => p.id === job_id);
-          if (existingProcess?.countdownEnd) {
-            countdownEnd = existingProcess.countdownEnd;
-          } else {
-            // Fallback for new jobs without an estimate.
-            countdownEnd = prev ? prev.process.countdownEnd : Date.now() + 3600 * 1000;
+    setProcesses((prevProcesses) =>
+      prevProcesses.map((p) => {
+        if (p.id === job.job_id) {
+          if (job.status === "completed") {
+            const processMessage = job.job_notes
+              ? job.job_notes
+              : `Sync of '${job.playlist_name}' complete.`;
+            const subMessage = job.result?.songs
+              ? `${job.result.songs.length} songs synced.`
+              : "";
+            return {
+              ...p,
+              status: "completed",
+              message: processMessage,
+              subMessage: subMessage,
+            };
+          }
+          if (job.status === "error") {
+            return {
+              ...p,
+              status: "error",
+              message: job.job_notes ? job.job_notes : errorMessage,
+              subMessage: job.result?.songs ? `${job.result.songs.length} songs synced before error.` : undefined,
+            };
+          }
+          if (job.status === "ready_to_finalize") {
+            return {
+              ...p,
+              status: "done",
+              message: `Sync ready for review.`,
+            };
           }
         }
-        const process: Process = {
-          id: job_id,
-          type: type || 'sync',
-          status: 'in-progress',
-          message,
-          playlistName: playlist_name,
-          countdownEnd,
-        };
-        bestProcessRef.current[job_id] = { message, hasEstimate, process };
-        setProcesses([process]);
-      }
-    } else if (status === 'ready_to_finalize') {
-      if (!isFinalizingRef.current) {
-        setProcesses([]);
-        setIsFinalizing(false);
-        if (type === 'sync_yt_to_sp') {
-          setYtToSpSongs(result?.songs || []);
-          setSongs([]);
-        } else {
-          setSongs(result?.songs || []);
-          setYtToSpSongs([]);
-        }
-        setOverlayState('songSyncStatus');
-        setProcessFadeOut(false);
-      }
-    } else if (status === 'completed') {
-      isFinalizingRef.current = false;
-      setIsFinalizing(false);
-      setProcesses([{ id: job_id, type: type || 'sync', status: 'completed', message: 'Sync complete!', playlistName: playlist_name }]);
-      setSongs([]);
-      setYtToSpSongs([]);
-      setToast('Sync finalized successfully');
-      setOverlayState('processes');
-      setProcessFadeOut(false);
-      bestProcessRef.current = {};
-      fetchQuota();
-      setTimeout(() => {
-        setProcessFadeOut(true);
-        setTimeout(() => {
-          setOverlayState('none');
-          setProcesses([]);
-          setSongs([]);
-          setYtToSpSongs([]);
-          setCurrentJobId(null); // Clear job ID at the very end
-          setProcessFadeOut(false);
-        }, 400);
-      }, 2000);
-    } else if (status === 'error') {
-      isFinalizingRef.current = false;
-      setIsFinalizing(false);
-      setProcesses([{ id: job_id, type: type || 'sync', status: 'error', message: error || 'An unknown error occurred.', playlistName: playlist_name }]);
-      setSongs([]);
-      setYtToSpSongs([]);
-      setOverlayState('processes');
-      setProcessFadeOut(false);
-      bestProcessRef.current = {};
-      setTimeout(() => {
-        setProcessFadeOut(true);
-        setTimeout(() => {
-          setOverlayState('none');
-          setProcesses([]);
-          setSongs([]);
-          setYtToSpSongs([]);
-          setCurrentJobId(null); // Clear job ID at the very end
-          setProcessFadeOut(false);
-        }, 400);
-      }, 2000);
-    }
-  }, [fetchQuota, setProcesses, setSongs, setYtToSpSongs, setCurrentJobId, setToast, setOverlayState, setProcessFadeOut, setIsFinalizing]);
+        return p;
+      })
+    );
+  }, [setProcesses, setToast, setSongs, setOverlayState, setIsFinalizing]);
 
   // Polling logic for job status
   useEffect(() => {
@@ -594,7 +560,7 @@ function App() {
         const job = await API.getJobStatus(currentJobId) as Job;
         handleJobUpdate(job);
   
-        if (job.status === 'completed' || job.status === 'error') {
+        if (job.status === 'completed' || job.status === 'error' || job.status === 'ready_to_finalize') {
           clearInterval(interval);
         }
       } catch (error) {
@@ -607,7 +573,7 @@ function App() {
     return () => clearInterval(interval);
   }, [currentJobId, handleJobUpdate, setCurrentJobId]);
 
-  // On mount or when userId changes, check for the latest job
+  // On mount, or when userId changes, check for the latest job
   useEffect(() => {
     if (!userId) return;
 
@@ -800,6 +766,22 @@ function App() {
     });
   }, [currentJobId]);
 
+  if (backendStatus === BackendStatus.CONNECTING) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white">
+        <span>Connecting to backend...</span>
+      </div>
+    );
+  }
+
+  if (backendStatus === BackendStatus.OFFLINE) {
+    return (
+      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white">
+        <span>Backend is offline. Please try again later.</span>
+      </div>
+    );
+  }
+
   if (!userId) {
     // Show a loading spinner or message until userId is loaded
     return (
@@ -937,56 +919,54 @@ function App() {
       </div>
 
       {/* Main Content with motion enter animation */}
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={displayedTab + String(quotaExceeded)}
-          initial={{ opacity: 0, y: 24, scale: 0.98 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: -24, scale: 0.98 }}
-          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
-          className="w-[216px] p-6 gap-y-3"
-          style={{ pointerEvents: quotaExceeded ? 'none' : 'auto' }}
-        >
-          {quotaExceeded ? (
-            <div className="flex flex-col items-center justify-center h-full text-center">
-              <div className="text-lg mb-4">YouTube API quota exhausted</div>
-              <div className="text-sm mb-2">Quota resets in:</div>
-              <div className="text-2xl font-mono mb-4">{formatMs(countdown)}</div>
-              <div className="text-xs text-neutral-400">Try again after midnight EST</div>
-            </div>
-          ) : (
-            <>
-              {!isReadyToSync ? (
-                <div className="flex flex-col items-center justify-center h-full text-center">
-                  <div className="text-md mb-4">Please authenticate with both Spotify and YouTube to continue.</div>
-                  <button
-                    className="mb-2 px-4 py-2 bg-green-700 hover:bg-green-600 rounded text-white"
-                    onClick={ensureSpotifyAuth}
-                    disabled={!!isSpotifyAuthenticated}
-                  >
-                    {isSpotifyAuthenticated ? "Spotify Authenticated" : "Authenticate Spotify"}
-                  </button>
-                  <button
-                    className="px-4 py-2 bg-red-700 hover:bg-red-600 rounded text-white"
-                    onClick={ensureYoutubeAuth}
-                    disabled={!!isYoutubeAuthenticated}
-                  >
-                    {isYoutubeAuthenticated ? "YouTube Authenticated" : "Authenticate YouTube"}
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* add ensureYoutubeAuth={ensureYoutubeAuth} back as a prop in the following lines for robustness */}
-                  {displayedTab === "1" && userId && <SyncSpToYt onSync={handleSyncSpToYt} userId={userId as string} />}
-                  {displayedTab === "2" && userId && <SyncYtToSp onSync={handleSyncYtToSp} userId={userId as string} />}
-                  {displayedTab === "3" && userId && <MergePlaylists onMerge={handleMergePlaylists} userId={userId as string} />}
-                  {displayedTab === "4" && userId && <DownloadSong onDownload={handleDownloadSong} userId={userId as string} />}
-                </>
+      <div className={`relative flex-1 flex flex-col bg-brand-darker transition-opacity duration-150 ${tabFade ? 'opacity-100' : 'opacity-0'}`}>
+        <div className="flex-grow overflow-y-auto pb-40"> 
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={displayedTab}
+              className={`transition-opacity duration-150 ${tabFade ? 'opacity-100' : 'opacity-0'}`}
+            >
+              {displayedTab === "1" && (
+                <SyncSpToYt 
+                  onSync={handleSyncSpToYt} 
+                  userId={userId || ''}
+                  quotaExceeded={quotaExceeded}
+                  quota={quota}
+                  countdown={countdown}
+                  formatMs={formatMs}
+                  isReadyToSync={isReadyToSync}
+                />
               )}
-            </>
-          )}
-        </motion.div>
-      </AnimatePresence>
+              {displayedTab === "2" && (
+                <SyncYtToSp 
+                  onSync={handleSyncYtToSp} 
+                  userId={userId || ''}
+                  quotaExceeded={quotaExceeded}
+                  quota={quota}
+                  countdown={countdown}
+                  formatMs={formatMs}
+                  isReadyToSync={isReadyToSync}
+                />
+              )}
+              {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId || ''} />}
+              {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId || ''} />}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        {/* Footer */}
+        <footer className="absolute bottom-0 left-0 right-0 bg-opacity-50 backdrop-blur-sm p-2 border-t border-brand-gray-2">
+          <div className="flex justify-between text-xs font-cascadia">
+            <span>v1.0.7</span>
+            <div className="flex gap-x-2">
+              <a href="https://github.com/xv786vx/SYNCER" target="_blank" rel="noopener noreferrer" className="hover:underline">
+                GitHub
+              </a>
+            </div>
+          </div>
+        </footer>
+      </div>
+
       {toast && (
         <ToastNotification 
           message={toast} 
@@ -1005,6 +985,14 @@ function App() {
           />
         )}
       </AnimatePresence>
+
+      {/* Quota Exceeded Banner */}
+      {quotaExceeded && (
+        <div className="absolute top-0 left-0 right-0 z-50 bg-red-700 text-white text-center py-2 text-xs font-bold animate-pulse">
+          YouTube API quota exceeded. Please try again after midnight EST.<br />
+          <span className="font-mono">Time until reset: {formatMs(countdown)}</span>
+        </div>
+      )}
     </div>
   )
 }

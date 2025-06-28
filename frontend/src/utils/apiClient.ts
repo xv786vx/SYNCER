@@ -309,3 +309,18 @@ export async function finalizeJob(jobId: string) {
     return APIErrorHandler.handleResponse(response);
   }, "Failed to finalize job");
 }
+
+// Health check for the backend
+export async function healthCheck(): Promise<{ status: string } | null> {
+  const url = `${API_BASE_URL}/health`;
+  // Don't use withErrorHandling here, as we want to handle the error differently
+  try {
+    const response = await fetchApi(url);
+    if (!response.ok) {
+      return null;
+    }
+    return APIErrorHandler.handleResponse(response);
+  } catch {
+    return null;
+  }
+}

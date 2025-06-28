@@ -359,3 +359,21 @@ def is_spotify_authenticated(user_id):
         print(f"[SpotifyAuthCheck] An unexpected error occurred while checking Spotify auth for user_id {user_id}: {e}")
         return False
 
+
+def get_spotify_client(user_id: str) -> spotipy.Spotify | None:
+    """
+    Returns an authenticated spotipy client for a given user_id.
+    Returns None if authentication fails.
+    """
+    print(f"[get_spotify_client] Getting client for user_id: {user_id}")
+    try:
+        provider = SpotifyProvider(user_id)
+        client = provider.ensure_client()
+        # A simple call to verify the client is working.
+        client.me()
+        print(f"[get_spotify_client] Successfully got client for user_id: {user_id}")
+        return client
+    except (SpotifyOauthError, Exception) as e:
+        print(f"[get_spotify_client] Failed to get client for user_id {user_id}: {e}")
+        return None
+

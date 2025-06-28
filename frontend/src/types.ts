@@ -40,3 +40,19 @@ export interface StatusResponse {
   name: string;
   authenticated: boolean;
 }
+
+export interface Job {
+  job_id: string;
+  status:
+    | "pending"
+    | "in-progress"
+    | "ready_to_finalize"
+    | "completed"
+    | "error";
+  result?: { songs?: SongStatus[] };
+  error?: string;
+  type?: string;
+  playlist_name?: string;
+  updated_at?: string;
+  job_notes?: string | null;
+}

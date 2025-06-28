@@ -24,15 +24,12 @@ from jobs import router as jobs_router
 load_dotenv()
 sys.path.append(os.path.join(os.path.dirname(__file__), 'functions'))
 
-from src.functions.sync_yt_to_sp import sync_yt_to_sp
-from src.functions.sync_sp_to_yt import sync_sp_to_yt
-from src.functions.merge_playlists import merge_playlists
 from src.functions.download_yt_song import download_yt_song
 from src.functions.helpers.yt_provider import YoutubeProvider
 from src.functions.helpers.sp_provider import SpotifyProvider, is_spotify_authenticated
 from src.functions.helpers.quota_tracker import get_total_quota_used, set_total_quota_value, YT_API_QUOTA_COSTS, quota_usage
 from src.db.youtube_token import save_youtube_token, get_youtube_token, is_youtube_authenticated
-from src.db.youtube_quota import YoutubeQuota, increment_quota, get_total_quota_used, set_total_quota_value
+from src.db.youtube_quota import get_total_quota_used, set_total_quota_value
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 engine = create_engine(DATABASE_URL)
@@ -71,6 +68,7 @@ class SyncResponse(BaseModel):
 
 app = FastAPI()
 app.include_router(jobs_router)
+
 
 # TEMPORARY SESSION STORE (replace with DB or secure storage in production)
 session_store = {"authenticated": False}
@@ -205,6 +203,11 @@ def youtube_quota_usage(db: Session = Depends(get_db)):
         "limit": YT_API_DAILY_LIMIT
     }
 
+@app.get("/health")
+async def health_check():
+    """A simple health check endpoint to confirm the server is running."""
+    return {"status": "ok"}
+
 # Endpoint to set quota value manually
 @app.post("/api/set_youtube_quota")
 def set_youtube_quota(quota_value: int = Body(...), db: Session = Depends(get_db)):
@@ -214,10 +217,6 @@ def set_youtube_quota(quota_value: int = Body(...), db: Session = Depends(get_db
     except Exception as e:
         logger.error(f"Error setting YouTube quota: {str(e)}")
         raise APIError(f"Failed to set YouTube quota: {str(e)}")
-
-@app.get("/api/testing")
-def testing():
-    return {"message": "Testing endpoint is working"}
 
 @app.get("/api/sp_playlist_track_count")
 def get_sp_playlist_track_count(playlist_name: str, user_id: str):
@@ -258,16 +257,6 @@ def get_yt_playlist_track_count(playlist_name: str, user_id: str, db: Session = 
         logger.error(f"Error getting YT track count for playlist '{playlist_name}' for user {user_id}: {e}")
         raise APIError("Failed to get YouTube playlist track count.")
 
-@app.options("/api/cors_test")
-@app.get("/api/cors_test")
-def cors_test():
-    """Test endpoint to verify CORS configuration"""
-    return {
-        "message": "CORS is working correctly",
-        "timestamp": datetime.now().isoformat(),
-        "origin": "*"  # In a real app would return the actual origin
-    }
-
 
 # app endpoints
 @app.get("/")
@@ -277,20 +266,6 @@ def root():
     except Exception as e:
         logger.error(f"Error in root endpoint: {str(e)}")
         raise APIError("Failed to get application status")
-
-# Simple version endpoint to verify deployment
-@app.get("/version")
-def version():
-    return {"version": "0.1.0"}
-
-@app.get("/api/authenticate")
-def authenticate(): 
-    try:
-        session_store["authenticated"] = True
-        return session_store
-    except Exception as e:
-        logger.error(f"Authentication error: {str(e)}")
-        raise AuthenticationError("Failed to authenticate user")
 
 @app.get("/api/download_yt_song")
 def api_download_yt_song(song_name: str, artists: str, user_id: str):
@@ -348,7 +323,6 @@ def spotify_callback(code: str, state: str = None, user_id: str = None):
             raise Exception("No code or user_id provided in callback.")
         from src.functions.helpers.sp_provider import SpotifyProvider
         sp = SpotifyProvider(user_id)
-        token_info = sp.handle_callback(code)
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
         return RedirectResponse(url=f"{frontend_url}/spotify-auth-success?user_id={user_id}")
     except Exception as e:
@@ -469,11 +443,3 @@ def youtube_auth_status(user_id: str):
     except Exception as e:
         logger.error(f"Error checking YouTube auth status for user_id {user_id}: {str(e)}")
         return {"authenticated": False}
-
-@app.get("/api/sync_status")
-def get_sync_status(user_id: str):
-    return sync_status_store.get(user_id, {"stage": "idle"})
-
-@app.get("/api/status")
-def get_status():
-    return {"name": "syncer", "authenticated": True}
