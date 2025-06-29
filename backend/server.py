@@ -323,6 +323,8 @@ def spotify_callback(code: str, state: str = None, user_id: str = None):
             raise Exception("No code or user_id provided in callback.")
         from src.functions.helpers.sp_provider import SpotifyProvider
         sp = SpotifyProvider(user_id)
+        # Exchange code for tokens and save via cache handler
+        token_info = sp.handle_callback(code)
         frontend_url = os.getenv("FRONTEND_URL", "http://localhost:5173")
         return RedirectResponse(url=f"{frontend_url}/spotify-auth-success?user_id={user_id}")
     except Exception as e:

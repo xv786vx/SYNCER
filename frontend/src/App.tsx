@@ -635,40 +635,40 @@ function App() {
   // Handler to check auth and trigger OAuth only when needed
   const ensureYoutubeAuth = async () => {
     if (!userId) {
-      console.log('No userId available, cannot check YouTube auth');
+      // console.log('No userId available, cannot check YouTube auth');
       return;
     }
-    console.log('Checking YouTube auth for user_id:', userId);
+    // console.log('Checking YouTube auth for user_id:', userId);
     try {
       // If we already know the auth status, use it
       if (isYoutubeAuthenticated === true) {
-        console.log('User already authenticated with YouTube (from state)');
+        // console.log('User already authenticated with YouTube (from state)');
         return;
       }
       
       const resp = await API.getYoutubeAuthStatus(userId);
-      console.log('Auth status response:', resp);
+      // console.log('Auth status response:', resp);
       setIsYoutubeAuthenticated(resp?.authenticated ?? false);
       
       if (!resp || !resp.authenticated) {
-        console.log('User not authenticated with YouTube, starting OAuth flow...');
+        // console.log('User not authenticated with YouTube, starting OAuth flow...');
         await startYoutubeOAuth(userId);
         // After OAuth completes, update the auth status
         setIsYoutubeAuthenticated(true);
       } else {
-        console.log('User already authenticated with YouTube');
+        // console.log('User already authenticated with YouTube');
       }
     } catch (error) {
-      console.error('Error checking YouTube auth status:', error);
+      // console.error('Error checking YouTube auth status:', error);
       setIsYoutubeAuthenticated(false);
       // Only start OAuth if we get a specific error indicating auth is needed
       if (error instanceof Error && error.message.includes('authentication')) {
-        console.log('Authentication error detected, starting OAuth flow...');
+        // console.log('Authentication error detected, starting OAuth flow...');
         await startYoutubeOAuth(userId);
         // After OAuth completes, update the auth status
         setIsYoutubeAuthenticated(true);
       } else {
-        console.error('Unexpected error during auth check:', error);
+        // console.error('Unexpected error during auth check:', error);
         throw error; // Re-throw other errors
       }
     }
@@ -920,36 +920,58 @@ function App() {
 
       {/* Main Content with motion enter animation */}
       <div className={`relative flex-1 flex flex-col bg-brand-darker transition-opacity duration-150 ${tabFade ? 'opacity-100' : 'opacity-0'}`}>
-        <div className="flex-grow overflow-y-auto pb-40"> 
+        <div className="flex-grow overflow-y-auto pb-30 p-6"> 
           <AnimatePresence mode="wait">
             <motion.div
               key={displayedTab}
               className={`transition-opacity duration-150 ${tabFade ? 'opacity-100' : 'opacity-0'}`}
             >
-              {displayedTab === "1" && (
+            {!isReadyToSync ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="text-sm mb-4">Please authenticate with both Spotify and YouTube to continue.</div>
+                    <button
+                      className="mb-2 px-4 py-2 text-sm bg-green-700 hover:bg-green-600 rounded text-white"
+                      onClick={ensureSpotifyAuth}
+                      disabled={!!isSpotifyAuthenticated}
+                    >
+                      {isSpotifyAuthenticated ? "Spotify Authenticated" : "Authenticate Spotify"}
+                    </button>
+                    <button
+                      className="px-4 py-2 text-sm bg-red-700 hover:bg-red-600 rounded text-white"
+                      onClick={ensureYoutubeAuth}
+                      disabled={!!isYoutubeAuthenticated}
+                    >
+                      {isYoutubeAuthenticated ? "YouTube Authenticated" : "Authenticate YouTube"}
+                    </button>
+                  </div>
+                ) : (
+                  <>
+              {displayedTab === "1" && 
                 <SyncSpToYt 
-                  onSync={handleSyncSpToYt} 
-                  userId={userId || ''}
-                  quotaExceeded={quotaExceeded}
-                  quota={quota}
-                  countdown={countdown}
-                  formatMs={formatMs}
-                  isReadyToSync={isReadyToSync}
-                />
-              )}
-              {displayedTab === "2" && (
+                onSync={handleSyncSpToYt} 
+                userId={userId || ''}
+                quotaExceeded={quotaExceeded}
+                quota={quota}
+                countdown={countdown}
+                formatMs={formatMs}
+                isReadyToSync={isReadyToSync}
+                />   
+              }
+              {displayedTab === "2" && 
                 <SyncYtToSp 
-                  onSync={handleSyncYtToSp} 
-                  userId={userId || ''}
-                  quotaExceeded={quotaExceeded}
-                  quota={quota}
-                  countdown={countdown}
-                  formatMs={formatMs}
-                  isReadyToSync={isReadyToSync}
+                onSync={handleSyncYtToSp} 
+                userId={userId || ''}
+                quotaExceeded={quotaExceeded}
+                quota={quota}
+                countdown={countdown}
+                formatMs={formatMs}
+                isReadyToSync={isReadyToSync}
                 />
-              )}
+              }
               {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId || ''} />}
               {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId || ''} />}
+              </>
+            )}
             </motion.div>
           </AnimatePresence>
         </div>
