@@ -4,10 +4,9 @@ from src.functions.helpers.yt_provider import YoutubeProvider
 import time
 
 
-def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db, song_limit: int | None = None):
+def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db, song_limit: int | None = None, tracks_to_sync: list | None = None):
     yt = YoutubeProvider(sp.user_id)
 
-    # Use the provided SpotifyProvider instance
     pl_info = sp.get_playlist_by_name(playlist_to_modify)
     print(f"pl_info: {pl_info}")
     if pl_info is None:
@@ -43,18 +42,23 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db, song_limit: int |
     existing_yt_titles = {preprocess_title(track['title']) for track in yt_playlist_items if 'title' in track}
     print(f"Found {len(existing_yt_titles)} existing tracks in the YouTube playlist.")
 
-    # 4. Add each song from spotify to youtube playlist
-    print(f"(Step 2) Syncing {pl_info['title']}, {pl_info['id']} to Youtube...")
-    t_to_sync_sp = sp.get_playlist_items(pl_info['id'])
-    print(f"Fetched {len(t_to_sync_sp) if t_to_sync_sp else 0} tracks from Spotify playlist '{pl_info['title']}'")
-    if t_to_sync_sp:
-        for track in t_to_sync_sp:
-            print(f"Track: {track}")
+    # --- Use provided tracks_to_sync if given, else fetch all from Spotify ---
+    if tracks_to_sync is not None:
+        t_to_sync_sp = tracks_to_sync
+        print(f"Using provided tracks_to_sync: {len(t_to_sync_sp)} tracks")
+    else:
+        # 4. Add each song from spotify to youtube playlist
+        print(f"(Step 2) Syncing {pl_info['title']}, {pl_info['id']} to Youtube...")
+        t_to_sync_sp = sp.get_playlist_items(pl_info['id'])
+        print(f"Fetched {len(t_to_sync_sp) if t_to_sync_sp else 0} tracks from Spotify playlist '{pl_info['title']}'")
+        if t_to_sync_sp:
+            for track in t_to_sync_sp:
+                print(f"Track: {track}")
 
-    # Extra safeguard against None return
-    if t_to_sync_sp is None:
-        print(f"Error: get_playlist_items returned None for playlist ID {pl_info['id']}")
-        t_to_sync_sp = []
+        # Extra safeguard against None return
+        if t_to_sync_sp is None:
+            print(f"Error: get_playlist_items returned None for playlist ID {pl_info['id']}")
+            t_to_sync_sp = []
 
     # --- Apply song limit if provided ---
     if song_limit is not None and song_limit > 0:
@@ -101,8 +105,8 @@ def sync_sp_to_yt(playlist_to_modify, sp: SpotifyProvider, db, song_limit: int |
                 "artist": artists,
                 "status": "not_found",
                 "yt_id": None,
-                "requires_manual_search": True
+                "requires_manual_search": True,
+                "reason": "Could not find a matching YouTube video."
             })
-
     return t_to_sync_yt
 

@@ -7,6 +7,7 @@ from src.functions.helpers.yt_provider import YoutubeProvider
 from sqlalchemy.orm import Session
 import logging
 import datetime
+from typing import Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,19 +30,29 @@ def _update_job_status(db: Session, job_id: str, status: str, result: dict = Non
         db.rollback()
         logger.error(f"Failed to update job {job_id}: {e}")
 
-def run_sync_sp_to_yt_job(job_id: str, playlist_name: str, user_id: str, song_limit: int | None = None):
+def run_sync_sp_to_yt_job(job_id: str, playlist_name: str, user_id: str, song_limit: int | None = None, tracks_to_sync: list[Any] | None = None):
     logger.info(f"=== TASK STARTED: run_sync_sp_to_yt_job ===")
     logger.info(f"Job ID: {job_id}")
     logger.info(f"Playlist: {playlist_name}")
     logger.info(f"User ID: {user_id}")
+
     if song_limit is not None:
         logger.info(f"Song limit: {song_limit}")
+    if tracks_to_sync is not None:
+        logger.info(f"Custom track list provided: {len(tracks_to_sync)} tracks")
+        # Enforce song_limit on tracks_to_sync if provided
+        if song_limit is not None:
+            tracks_to_sync = tracks_to_sync[:song_limit]
     
     db = SessionLocal()
     try:
         logger.info(f"Starting Spotify to YouTube sync for playlist '{playlist_name}'")
         sp = SpotifyProvider(user_id)
-        songs = sync_sp_to_yt(playlist_name, sp, db, song_limit=song_limit)
+        # If tracks_to_sync is provided, pass it to sync_sp_to_yt (requires sync_sp_to_yt to support it)
+        if tracks_to_sync is not None:
+            songs = sync_sp_to_yt(playlist_name, sp, db, song_limit=song_limit, tracks_to_sync=tracks_to_sync)
+        else:
+            songs = sync_sp_to_yt(playlist_name, sp, db, song_limit=song_limit)
         logger.info(f"Sync completed, found {len(songs) if songs else 0} songs")
         _update_job_status(db, job_id, 'ready_to_finalize', result={'songs': songs})
         logger.info(f"=== TASK COMPLETED: run_sync_sp_to_yt_job ===")
@@ -52,17 +63,28 @@ def run_sync_sp_to_yt_job(job_id: str, playlist_name: str, user_id: str, song_li
     finally:
         db.close()
 
-def run_sync_yt_to_sp_job(job_id: str, playlist_name: str, user_id: str):
+def run_sync_yt_to_sp_job(job_id: str, playlist_name: str, user_id: str, song_limit: int | None = None, tracks_to_sync: list[Any] | None = None):
     logger.info(f"=== TASK STARTED: run_sync_yt_to_sp_job ===")
     logger.info(f"Job ID: {job_id}")
     logger.info(f"Playlist: {playlist_name}")
     logger.info(f"User ID: {user_id}")
     
+    if song_limit is not None:
+        logger.info(f"Song limit: {song_limit}")
+    if tracks_to_sync is not None:
+        logger.info(f"Custom track list provided: {len(tracks_to_sync)} tracks")
+        # Enforce song_limit on tracks_to_sync if provided
+        if song_limit is not None:
+            tracks_to_sync = tracks_to_sync[:song_limit]
+
     db = SessionLocal()
     try:
         logger.info(f"Starting YouTube to Spotify sync for playlist '{playlist_name}'")
         yt = YoutubeProvider(user_id)
-        songs = sync_yt_to_sp(playlist_name, yt, db)
+        if tracks_to_sync is not None:
+            songs = sync_yt_to_sp(playlist_name, yt, db, song_limit=song_limit, tracks_to_sync=tracks_to_sync)
+        else:
+            songs = sync_yt_to_sp(playlist_name, yt, db, song_limit=song_limit)
         logger.info(f"Sync completed, found {len(songs) if songs else 0} songs")
         _update_job_status(db, job_id, 'ready_to_finalize', result={'songs': songs})
         logger.info(f"=== TASK COMPLETED: run_sync_yt_to_sp_job ===")

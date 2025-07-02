@@ -19,6 +19,7 @@
  */
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
 import { ManualSearchResult } from "../components/ManualSearchModal";
+import type { SongStatus } from "../types";
 
 // Base URL configuration
 const API_BASE_URL = "https://syncer-26vh.onrender.com";
@@ -230,25 +231,81 @@ export async function startSpotifyOAuth(userId: string) {
 
 // --- NEW ASYNC JOB-BASED FUNCTIONS ---
 
-// Start a Spotify to YouTube sync job
-export async function startSyncSpToYt(playlistName: string, userId: string) {
+// Pre-sync check for Spotify to YouTube
+interface PreSyncCheckSpToYtResponse {
+  tracks_to_sync: SongStatus[];
+  reduced: boolean;
+  original_count?: number;
+  final_count?: number;
+}
+
+export async function preSyncCheckSpToYt(
+  playlistName: string,
+  userId: string
+): Promise<PreSyncCheckSpToYtResponse | null> {
+  const url = `${API_BASE_URL}/api/pre_sync_check_sp_to_yt?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to perform pre-sync check");
+}
+
+// Start a Spotify to YouTube sync job with tracks_to_sync
+export async function startSyncSpToYt({
+  playlist_name,
+  user_id,
+  tracks_to_sync,
+}: {
+  playlist_name: string;
+  user_id: string;
+  tracks_to_sync: SongStatus[];
+}): Promise<{ job_id: string } | null> {
   const url = `${API_BASE_URL}/jobs/sync_sp_to_yt`;
   return withErrorHandling(async () => {
     const response = await fetchApi(url, {
       method: "POST",
-      body: JSON.stringify({ playlist_name: playlistName, user_id: userId }),
+      body: JSON.stringify({ playlist_name, user_id, tracks_to_sync }),
     });
     return APIErrorHandler.handleResponse(response);
   }, "Failed to start Spotify to YouTube sync job");
 }
 
-// Start a YouTube to Spotify sync job
-export async function startSyncYtToSp(playlistName: string, userId: string) {
+// Pre-sync check for YouTube to Spotify
+export interface PreSyncCheckYtToSpResponse {
+  tracks_to_sync: SongStatus[];
+  reduced: boolean;
+  original_count?: number;
+  final_count?: number;
+  quota_cost?: number;
+  quota_threshold?: number;
+}
+
+export async function preSyncCheckYtToSp(
+  playlistName: string,
+  userId: string
+): Promise<PreSyncCheckYtToSpResponse | null> {
+  const url = `${API_BASE_URL}/api/pre_sync_check_yt_to_sp?playlist_name=${encodeURIComponent(playlistName)}&user_id=${encodeURIComponent(userId)}`;
+  return withErrorHandling(async () => {
+    const response = await fetchApi(url);
+    return APIErrorHandler.handleResponse(response);
+  }, "Failed to perform pre-sync check");
+}
+
+// Start a YouTube to Spotify sync job with tracks_to_sync
+export async function startSyncYtToSp({
+  playlist_name,
+  user_id,
+  tracks_to_sync,
+}: {
+  playlist_name: string;
+  user_id: string;
+  tracks_to_sync: SongStatus[];
+}): Promise<{ job_id: string } | null> {
   const url = `${API_BASE_URL}/jobs/sync_yt_to_sp`;
   return withErrorHandling(async () => {
     const response = await fetchApi(url, {
       method: "POST",
-      body: JSON.stringify({ playlist_name: playlistName, user_id: userId }),
+      body: JSON.stringify({ playlist_name, user_id, tracks_to_sync }),
     });
     return APIErrorHandler.handleResponse(response);
   }, "Failed to start YouTube to Spotify sync job");
@@ -281,7 +338,12 @@ export async function getJobStatus(jobId: string) {
   const url = `${API_BASE_URL}/jobs/${jobId}`;
   return withErrorHandling(async () => {
     const response = await fetchApi(url);
-    return APIErrorHandler.handleResponse(response);
+    const data = await APIErrorHandler.handleResponse(response);
+    // Debug log for job status
+    if (data && typeof data === "object" && "status" in data) {
+      console.log("[DEBUG] getJobStatus:", data.status, data);
+    }
+    return data;
   }, "Failed to get job status");
 }
 

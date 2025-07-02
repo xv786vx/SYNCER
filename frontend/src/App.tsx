@@ -22,6 +22,8 @@ import Dither from "./components/Dither";
 import { startYoutubeOAuth } from './utils/apiClient';
 import { getOrCreateUserId } from './utils/userId';
 import { usePersistentState } from './utils/usePersistentState';
+import NoSongsToSync from './components/NoSongsToSync';
+import type { PreSyncCheckYtToSpResponse } from './utils/apiClient';
 
 // New state for backend status
 enum BackendStatus {
@@ -44,11 +46,18 @@ function getMsUntilMidnightEST() {
   const now = new Date();
   // Get the current time in the America/New_York timezone
   const nowInEST = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  // Create a new date for the next midnight in that timezone
-  const nextMidnightEST = new Date(nowInEST);
-  nextMidnightEST.setHours(24, 0, 0, 0);
+  // Create a new date for the next 3am in that timezone
+  const nextReset = new Date(nowInEST);
+  if (nowInEST.getHours() < 3) {
+    // If before 3am, reset is today at 3am
+    nextReset.setHours(3, 0, 0, 0);
+  } else {
+    // If after 3am, reset is tomorrow at 3am
+    nextReset.setDate(nextReset.getDate() + 1);
+    nextReset.setHours(3, 0, 0, 0);
+  }
   // Return the difference in milliseconds
-  return nextMidnightEST.getTime() - nowInEST.getTime();
+  return nextReset.getTime() - nowInEST.getTime();
 }
 
 function formatMs(ms: number) {
@@ -60,6 +69,19 @@ function formatMs(ms: number) {
     .toString()
     .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
+
+// Add at the top, after imports
+interface PreSyncCheckSpToYtResponse {
+  tracks_to_sync: SongStatus[];
+  reduced: boolean;
+  original_count?: number;
+  final_count?: number;
+}
+
+interface StartSyncSpToYtResponse { job_id: string; }
+
+// Add missing interface for YT to SP pre-sync response
+interface StartSyncYtToSpResponse { job_id: string };
 
 function App() {
   // Use persistent userId from Chrome storage or localStorage
@@ -85,7 +107,6 @@ function App() {
   const [manualSearchIndex, setManualSearchIndex] = useState<number | null>(null);
   const [currentJobId, setCurrentJobId] = usePersistentState<string | null>('currentJobId', null);
   const [overlayState, setOverlayState] = useState<'none' | 'processes' | 'finalizing' | 'songSyncStatus'>('none');
-  const [, setFinalizingJobId] = useState<string | null>(null);
   const [isFinalizing, setIsFinalizing] = useState(false);
   const isFinalizingRef = useRef(false);
 
@@ -131,10 +152,27 @@ function App() {
   }, []);
   
 
-  const addProcess = (type: string, message: string, extra: Partial<Omit<Process, 'id' | 'type' | 'status' | 'message'>> = {}) => {
-    const id = Date.now().toString();
-    setProcesses(prev => [...prev, { id, type, status: 'pending', message, ...extra }]);
-    return id;
+  // Prevent duplicate processes for the same job/type/playlist
+  // Enhanced addProcess: Now supports storing backend jobId (UUID) for backend operations
+  const addProcess = (
+    type: string,
+    message: string,
+    extra: Partial<Omit<Process, 'id' | 'type' | 'status' | 'message' | 'jobId'>> = {},
+    jobId?: string // backend job UUID
+  ) => {
+    setProcesses(prev => {
+      const filtered = prev.filter(
+        p => !(
+          (p.type === 'sync_sp_to_yt' || p.type === 'sync_yt_to_sp') &&
+          (type === 'sync_sp_to_yt' || type === 'sync_yt_to_sp')
+        )
+      );
+      const id = Date.now().toString();
+      // Set status to 'in-progress' for sync jobs, otherwise 'pending'
+      const isSync = type === 'sync_sp_to_yt' || type === 'sync_yt_to_sp';
+      return [...filtered, { id, type, status: isSync ? 'in-progress' : 'pending', message, ...extra, jobId }];
+    });
+    return Date.now().toString();
   };
 
   const updateProcess = (id: string, status: Process['status'], message?: string, interactive?: Process['interactive']) => {
@@ -148,6 +186,12 @@ function App() {
         p.id === id ? { ...p, status, message: message || p.message, interactive } : p
       );
     });
+    // Auto-remove completed or error processes after 2 seconds
+    if (status === 'completed' || status === 'error') {
+      setTimeout(() => {
+        setProcesses(prev => prev.filter(p => p.id !== id));
+      }, 2000);
+    }
   };
 
   const removeProcess = (id: string) => {
@@ -176,101 +220,97 @@ function App() {
     await ensureYoutubeAuth();
 
     try {
-      // Get all info before showing anything.
+      // 1. Get track count for time estimate
       const countResp = await API.getSpPlaylistTrackCount(playlistName, userId);
       const trackCount = countResp?.track_count ?? null;
       const timeEstimate = trackCount ? (trackCount * 4 + 5) : undefined;
 
-      const data = await API.startSyncSpToYt(playlistName, userId) as { job_id: string };
-      
-      if (data.job_id) {
-        const { job_id } = data;
-        const hasEstimate = typeof timeEstimate === 'number';
-        let message = `Syncing "${playlistName}"...`;
-        if (hasEstimate) {
-          message += ` (Est. ${timeEstimate}s)`;
-        }
-        
-        const process: Process = {
-          id: job_id,
-          type: 'sync_sp_to_yt',
-          status: 'in-progress',
-          message,
-          playlistName: playlistName,
-          countdownEnd: hasEstimate ? Date.now() + timeEstimate! * 1000 : undefined,
-        };
+      // 2. Pre-sync check
+      const preSyncResp = await API.preSyncCheckSpToYt(playlistName, userId) as PreSyncCheckSpToYtResponse;
+      if (!preSyncResp || !Array.isArray(preSyncResp.tracks_to_sync)) {
+        throw new Error('Failed to fetch tracks to sync.');
+      }
+      const { tracks_to_sync, reduced } = preSyncResp;
 
-        // Store this as the "best" state so polling doesn't overwrite it
-        bestProcessRef.current[job_id] = { message, hasEstimate, process };
-        
-        // Show the overlay now, with all correct info.
-        setOverlayState('processes');
-        setProcesses([process]);
-        
-        // Start polling
-        startJobPolling(job_id);
+      // 3. Add process with quota reduction message and time estimate (no jobId yet)
+      let processMsg = `Syncing '${playlistName}' from Spotify to YouTube...`;
+      if (typeof timeEstimate === 'number') {
+        processMsg += ` (Est. ${timeEstimate}s)`;
+      }
+      if (reduced) {
+        processMsg += `\nDue to playlist size, only the first 50 songs will be synced.`;
+      }
+      const processId = addProcess('sync_sp_to_yt', processMsg, {
+        playlistName,
+        countdownEnd: typeof timeEstimate === 'number' ? Date.now() + timeEstimate * 1000 : undefined,
+      });
+      setOverlayState('processes');
+
+      // 4. Start sync job with filtered tracks
+      const jobResp = await API.startSyncSpToYt({
+        playlist_name: playlistName,
+        user_id: userId,
+        tracks_to_sync,
+      }) as StartSyncSpToYtResponse;
+      if (jobResp && jobResp.job_id) {
+        // Update the process to include the backend jobId (UUID)
+        setProcesses(prev => prev.map(p => p.id === processId ? { ...p, jobId: jobResp.job_id } : p));
+        startJobPolling(jobResp.job_id);
+      } else {
+        updateProcess(processId, 'error', 'Failed to start sync job.');
       }
     } catch (error) {
-      setProcesses([]);
-      setOverlayState('none');
-      // Type guard to check if it's an API error with a response
-      if (error && typeof error === 'object' && 'response' in error) {
-        const axiosError = error as { response: { status: number; data?: { detail?: string } } };
-        if (axiosError.response && axiosError.response.status === 429) {
-          const detail = axiosError.response.data?.detail || 'Insufficient YouTube API quota. Please try again later.';
-          setToast(detail);
-          return; // Stop further processing
-        }
-      }
-      // Fallback to the generic error handler
-      APIErrorHandler.handleError(error as Error, 'Failed to start sync job');
+      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
 
   const handleSyncYtToSp = async (playlistName: string, userId: string) => {
-    if (!userId || !playlistName) return;
+    if (!userId) return;
     await ensureSpotifyAuth();
     await ensureYoutubeAuth();
 
     try {
-      // Get all info before showing anything.
+      // 1. Get track count for time estimate
       const countResp = await API.getYtPlaylistTrackCount(playlistName, userId);
       const trackCount = countResp?.track_count ?? null;
       const timeEstimate = trackCount ? (trackCount * 4 + 5) : undefined;
 
-      const data = await API.startSyncYtToSp(playlistName, userId) as { job_id: string };
-      
-      if (data.job_id) {
-        const { job_id } = data;
-        const hasEstimate = typeof timeEstimate === 'number';
-        let message = `Syncing "${playlistName}"...`;
-        if (hasEstimate) {
-          message += ` (Est. ${timeEstimate}s)`;
-        }
-        
-        const process: Process = {
-          id: job_id,
-          type: 'sync_yt_to_sp',
-          status: 'in-progress',
-          message,
-          playlistName: playlistName,
-          countdownEnd: hasEstimate ? Date.now() + timeEstimate! * 1000 : undefined,
-        };
-
-        // Store this as the "best" state so polling doesn't overwrite it
-        bestProcessRef.current[job_id] = { message, hasEstimate, process };
-        
-        // Show the overlay now, with all correct info.
-        setOverlayState('processes');
-        setProcesses([process]);
-        
-        // Start polling
-        startJobPolling(job_id);
+      // 2. Pre-sync check
+      const preSyncResp = await API.preSyncCheckYtToSp(playlistName, userId) as PreSyncCheckYtToSpResponse;
+      if (!preSyncResp || !Array.isArray(preSyncResp.tracks_to_sync)) {
+        throw new Error('Failed to fetch tracks to sync.');
       }
-    } catch (e) {
-      setProcesses([]);
-      setOverlayState('none');
-      APIErrorHandler.handleError(e as Error, 'Failed to start sync job');
+      const { tracks_to_sync, reduced } = preSyncResp;
+
+      // 3. Add process with quota reduction message and time estimate (no jobId yet)
+      let processMsg = `Syncing '${playlistName}' from YouTube to Spotify...`;
+      if (typeof timeEstimate === 'number') {
+        processMsg += ` (Est. ${timeEstimate}s)`;
+      }
+      if (reduced) {
+        processMsg += `\nDue to playlist size, only the first ${tracks_to_sync.length} songs will be synced.`;
+      }
+      const processId = addProcess('sync_yt_to_sp', processMsg, {
+        playlistName,
+        countdownEnd: typeof timeEstimate === 'number' ? Date.now() + timeEstimate * 1000 : undefined,
+      });
+      setOverlayState('processes');
+
+      // 4. Start sync job with filtered tracks
+      const jobResp = await API.startSyncYtToSp({
+        playlist_name: playlistName,
+        user_id: userId,
+        tracks_to_sync,
+      }) as StartSyncYtToSpResponse;
+      if (jobResp && jobResp.job_id) {
+        // Update the process to include the backend jobId (UUID)
+        setProcesses(prev => prev.map(p => p.id === processId ? { ...p, jobId: jobResp.job_id } : p));
+        startJobPolling(jobResp.job_id);
+      } else {
+        updateProcess(processId, 'error', 'Failed to start sync job.');
+      }
+    } catch (error) {
+      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
     }
   };
 
@@ -349,50 +389,66 @@ function App() {
 
   // --- Minimal fade-out for SongSyncStatus overlay ---
   const handleFinalizeSpToYt = async () => {
-    isFinalizingRef.current = true;
     setIsFinalizing(true);
-    setOverlayState('finalizing');
-    setFinalizingJobId(currentJobId);
-    if (!currentJobId) {
-      alert('Cannot finalize: No active job found.');
-      setIsFinalizing(false);
-      setOverlayState('none');
-      setFinalizingJobId(null);
-      return;
-    }
+    isFinalizingRef.current = true;
     try {
-      await API.finalizeJob(currentJobId);
-      // Don't set isFinalizing to false here, let the polling handle it
-    } catch (error) {
-      APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
-      isFinalizingRef.current = false;
+      if (currentJobId) {
+        await API.finalizeJob(currentJobId);
+        setToast("Sync finalizing...");
+        setOverlayState('processes');
+        // Start polling for job completion
+        const poll = async () => {
+          let done = false;
+          while (!done) {
+            const job = await API.getJobStatus(currentJobId) as Job;
+            if (job.status === 'completed' || job.status === 'error') {
+              done = true;
+              setIsFinalizing(false);
+              setOverlayState('none');
+              setCurrentJobId(null);
+              setToast(job.status === 'completed' ? "Sync finished!" : "Sync failed.");
+            } else {
+              await new Promise(res => setTimeout(res, 2000));
+            }
+          }
+        };
+        poll();
+      }
+    } catch {
       setIsFinalizing(false);
-      setOverlayState('none');
-      setFinalizingJobId(null);
+      isFinalizingRef.current = false;
     }
   };
 
   const handleFinalizeYtToSp = async () => {
-    isFinalizingRef.current = true;
     setIsFinalizing(true);
-    setOverlayState('finalizing');
-    setFinalizingJobId(currentJobId);
-    if (!currentJobId) {
-      alert('Cannot finalize: No active job found.');
-      setIsFinalizing(false);
-      setOverlayState('none');
-      setFinalizingJobId(null);
-      return;
-    }
+    isFinalizingRef.current = true;
     try {
-      await API.finalizeJob(currentJobId);
-      // Don't set isFinalizing to false here, let the polling handle it
-    } catch (error) {
-      APIErrorHandler.handleError(error as Error, 'Failed to finalize sync');
-      isFinalizingRef.current = false;
+      if (currentJobId) {
+        await API.finalizeJob(currentJobId);
+        setToast("Sync finalizing...");
+        setOverlayState('processes');
+        // Start polling for job completion
+        const poll = async () => {
+          let done = false;
+          while (!done) {
+            const job = await API.getJobStatus(currentJobId) as Job;
+            if (job.status === 'completed' || job.status === 'error') {
+              done = true;
+              setIsFinalizing(false);
+              setOverlayState('none');
+              setCurrentJobId(null);
+              setToast(job.status === 'completed' ? "Sync finished!" : "Sync failed.");
+            } else {
+              await new Promise(res => setTimeout(res, 2000));
+            }
+          }
+        };
+        poll();
+      }
+    } catch {
       setIsFinalizing(false);
-      setOverlayState('none');
-      setFinalizingJobId(null);
+      isFinalizingRef.current = false;
     }
   };
 
@@ -480,10 +536,12 @@ function App() {
   }, []);
 
   // Track the best process state for the current job
-  const bestProcessRef = useRef<{ [jobId: string]: { message: string; hasEstimate: boolean; process: Process } }>({});
-
   const handleJobUpdate = useCallback((job: Job) => {
     console.log("Handling job update", job);
+    if (job.status === "ready_to_finalize") {
+      console.log("[DEBUG] job.result.songs:", job.result?.songs);
+    }
+
     const errorMessage = job.error || 'An unknown error occurred.';
 
     if (job.status === "completed") {
@@ -513,7 +571,7 @@ function App() {
 
     setProcesses((prevProcesses) =>
       prevProcesses.map((p) => {
-        if (p.id === job.job_id) {
+        if (p.id === currentJobId) {
           if (job.status === "completed") {
             const processMessage = job.job_notes
               ? job.job_notes
@@ -547,7 +605,7 @@ function App() {
         return p;
       })
     );
-  }, [setProcesses, setToast, setSongs, setOverlayState, setIsFinalizing]);
+  }, [setProcesses, setToast, setSongs, setOverlayState, setIsFinalizing, currentJobId]);
 
   // Polling logic for job status
   useEffect(() => {
@@ -766,9 +824,92 @@ function App() {
     });
   }, [currentJobId]);
 
+  // Add state for NoSongsToSync overlay fade
+  const [showNoSongsToSync, setShowNoSongsToSync] = useState(false);
+  const [noSongsFade, setNoSongsFade] = useState(false);
+
+  useEffect(() => {
+    if (overlayState === 'songSyncStatus' && songs.length === 0 && ytToSpSongs.length === 0) {
+      setShowNoSongsToSync(true);
+      setNoSongsFade(false);
+      const fadeTimer = setTimeout(() => setNoSongsFade(true), 4500);
+      const removeTimer = setTimeout(async () => {
+        setShowNoSongsToSync(false);
+        setOverlayState('none'); // Clear overlay state after fade out
+        setSongs([]);            // Clear songs array
+        setYtToSpSongs([]);      // Clear ytToSpSongs array
+        // Finalize job if needed to prevent overlay from reappearing
+        if (currentJobId) {
+          try {
+            const job = await API.getJobStatus(currentJobId) as Job;
+            if (job && job.status === 'ready_to_finalize') {
+              await API.finalizeJob(currentJobId);
+              setCurrentJobId(null);
+            }
+          } catch {
+            // Intentionally ignore errors when finalizing job after NoSongsToSync overlay
+          }
+        }
+      }, 5000);
+      return () => {
+        clearTimeout(fadeTimer);
+        clearTimeout(removeTimer);
+      };
+    } else {
+      setShowNoSongsToSync(false);
+      setNoSongsFade(false);
+    }
+  }, [overlayState, songs.length, ytToSpSongs.length, setSongs, setYtToSpSongs, currentJobId, setCurrentJobId]);
+
+  useEffect(() => {
+    if (!showNoSongsToSync) {
+      // Only clear if overlayState was songSyncStatus and both arrays are empty
+      if (overlayState === 'songSyncStatus' && songs.length === 0 && ytToSpSongs.length === 0) {
+        setOverlayState('none');
+        setSongs([]);
+        setYtToSpSongs([]);
+      }
+    }
+    // eslint-disable-next-line
+  }, [showNoSongsToSync]);
+
+  // Cleanup orphaned processes whose jobs no longer exist (use jobId for backend calls)
+  useEffect(() => {
+    const cleanupOrphanedProcesses = async () => {
+      if (!processes || processes.length === 0) return;
+      if (overlayState !== 'processes') return;
+      const updatedProcesses = await Promise.all(
+        processes.map(async (p) => {
+          // Only check for processes with a backend jobId (UUID)
+          if (!p.jobId) return p;
+          try {
+            await API.getJobStatus(p.jobId);
+            return p; // Job exists
+          } catch (err: unknown) {
+            if (
+              err &&
+              typeof err === 'object' &&
+              'status' in err &&
+              typeof (err as { status?: unknown }).status === 'number' &&
+              (err as { status: number }).status === 404
+            ) {
+              return null;
+            }
+            return p; // Keep on other errors
+          }
+        })
+      );
+      const filtered = updatedProcesses.filter((p): p is Process => p !== null);
+      if (filtered.length !== processes.length) {
+        setProcesses(filtered);
+      }
+    };
+    cleanupOrphanedProcesses();
+  }, [overlayState, processes, setProcesses]);
+
   if (backendStatus === BackendStatus.CONNECTING) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white">
+      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white font-cascadia">
         <span>Connecting to backend...</span>
       </div>
     );
@@ -776,7 +917,7 @@ function App() {
 
   if (backendStatus === BackendStatus.OFFLINE) {
     return (
-      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white">
+      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white font-cascadia">
         <span>Backend is offline. Please try again later.</span>
       </div>
     );
@@ -785,7 +926,7 @@ function App() {
   if (!userId) {
     // Show a loading spinner or message until userId is loaded
     return (
-      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white">
+      <div className="flex items-center justify-center h-full w-full bg-brand-dark text-white font-cascadia">
         <span>Loading...</span>
       </div>
     );
@@ -822,6 +963,34 @@ function App() {
                   finalizing={true}
                 />
               </motion.div>
+            ) : overlayState === 'songSyncStatus' && (songs.length > 0 || ytToSpSongs.length > 0) ? (
+              <motion.div
+                key={songs.length > 0 ? "song-sync-status-overlay" : "yt-song-sync-status-overlay"}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
+                className="absolute inset-0 z-40"
+              >
+                <SongSyncStatus
+                  songs={songs.length > 0 ? songs : ytToSpSongs}
+                  onManualSearch={songs.length > 0 ? handleManualSearch : handleManualSearchYtToSp}
+                  onSkip={songs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
+                  onFinalize={ytToSpSongs.length > 0 ? handleFinalizeYtToSp : handleFinalizeSpToYt}
+                  finalizing={false}
+                />
+              </motion.div>
+            ) : overlayState === 'songSyncStatus' && showNoSongsToSync ? (
+              <motion.div
+                key="no-songs-to-sync-overlay"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: noSongsFade ? 0 : 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.5 }}
+                className="absolute inset-0 z-40"
+              >
+                <NoSongsToSync />
+              </motion.div>
             ) : overlayState === 'processes' && processes.length > 0 ? (
               <motion.div
                 key="processes-overlay"
@@ -837,23 +1006,6 @@ function App() {
                     message: p.message?.replace('undefined', p.playlistName || '') || `Syncing "${p.playlistName || ''}"...`,
                   }))}
                   onDismiss={dismissProcesses}
-                />
-              </motion.div>
-            ) : overlayState === 'songSyncStatus' ? (
-              <motion.div
-                key={songs.length > 0 ? "song-sync-status-overlay" : "yt-song-sync-status-overlay"}
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.15 }}
-                className="absolute inset-0 z-40"
-              >
-                <SongSyncStatus
-                  songs={songs.length > 0 ? songs : ytToSpSongs}
-                  onManualSearch={songs.length > 0 ? handleManualSearch : handleManualSearchYtToSp}
-                  onSkip={songs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
-                  onFinalize={ytToSpSongs.length > 0 ? handleFinalizeYtToSp : handleFinalizeSpToYt}
-                  finalizing={false}
                 />
               </motion.div>
             ) : null}
@@ -1011,7 +1163,7 @@ function App() {
       {/* Quota Exceeded Banner */}
       {quotaExceeded && (
         <div className="absolute top-0 left-0 right-0 z-50 bg-red-700 text-white text-center py-2 text-xs font-bold animate-pulse">
-          YouTube API quota exceeded. Please try again after midnight EST.<br />
+          YouTube API quota exceeded. Please try again after 3am EST.<br />
           <span className="font-mono">Time until reset: {formatMs(countdown)}</span>
         </div>
       )}

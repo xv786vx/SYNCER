@@ -10,7 +10,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import RedirectResponse
-from fastapi import Body
+from fastapi import Body, Query
 from google_auth_oauthlib.flow import Flow
 from fastapi import Depends
 from sqlalchemy import create_engine
@@ -445,3 +445,128 @@ def youtube_auth_status(user_id: str):
     except Exception as e:
         logger.error(f"Error checking YouTube auth status for user_id {user_id}: {str(e)}")
         return {"authenticated": False}
+
+def normalize_track(track):
+    """Helper to normalize track for comparison (name + artist, lowercased, stripped)."""
+    name = track.get('name', '').strip().lower()
+    artist = track.get('artist', '').strip().lower()
+    return f"{name}::{artist}"
+
+@app.get("/api/pre_sync_check_sp_to_yt")
+def pre_sync_check_sp_to_yt(
+    playlist_name: str = Query(...),
+    user_id: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Pre-sync check for Spotify to YouTube sync. Returns the list of tracks to sync, possibly reduced due to quota.
+    """
+    try:
+        # Fetch Spotify playlist tracks
+        sp = SpotifyProvider(user_id)
+        if not is_spotify_authenticated(user_id):
+            raise AuthenticationError("Spotify is not authenticated.")
+        sp_playlist_id = sp.get_playlist_by_name(playlist_name)['id']
+        sp_tracks = sp.get_playlist_items(sp_playlist_id)  # Should return list of dicts with 'name' and 'artist'
+        if not sp_tracks:
+            raise ResourceNotFoundError(f"Spotify playlist '{playlist_name}' not found or empty.")
+
+        # Fetch YouTube playlist tracks (if exists)
+        yt = YoutubeProvider(user_id)
+        yt_playlist = yt.get_playlist_by_name(playlist_name, db)
+        if not yt_playlist:
+            yt_tracks = []
+        else:
+            yt_playlist_id = yt_playlist['id']
+            yt_tracks = yt.get_playlist_items(yt_playlist_id, db)  # Should return list of dicts with 'name' and 'artist'
+        yt_track_keys = set(normalize_track(t) for t in yt_tracks) if yt_tracks else set()
+
+        # Determine which tracks need to be synced
+        tracks_to_sync = [t for t in sp_tracks if normalize_track(t) not in yt_track_keys]
+        original_count = len(tracks_to_sync)
+
+        # Quota logic
+        COST_PER_TRACK = 51  # YouTube API cost per track (example)
+        QUOTA_THRESHOLD = 100 * COST_PER_TRACK
+        quota_cost = original_count * COST_PER_TRACK
+        reduced = False
+        reduced_count = original_count
+        if quota_cost > QUOTA_THRESHOLD:
+            # Cut the list to the first 50 songs
+            tracks_to_sync = tracks_to_sync[:50]
+            reduced = True
+            reduced_count = len(tracks_to_sync)
+            logger.info(f"Pre-sync check: Playlist '{playlist_name}' for user {user_id} reduced from {original_count} to {reduced_count} tracks due to quota.")
+
+        return {
+            "tracks_to_sync": tracks_to_sync,
+            "reduced": reduced,
+            "original_count": original_count,
+            "final_count": reduced_count,
+            "quota_cost": quota_cost,
+            "quota_threshold": QUOTA_THRESHOLD
+        }
+    except Exception as e:
+        logger.error(f"Error in pre_sync_check_sp_to_yt: {str(e)}")
+        raise APIError(f"Failed pre-sync check: {str(e)}")
+
+@app.get("/api/pre_sync_check_yt_to_sp")
+def pre_sync_check_yt_to_sp(
+    playlist_name: str = Query(...),
+    user_id: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Pre-sync check for YouTube to Spotify sync. Returns the list of tracks to sync, possibly reduced due to quota.
+    """
+    try:
+        # Fetch YouTube playlist tracks
+        yt = YoutubeProvider(user_id)
+        if not is_youtube_authenticated(user_id):
+            raise AuthenticationError("YouTube is not authenticated.")
+        yt_playlist = yt.get_playlist_by_name(playlist_name, db)
+        if not yt_playlist:
+            raise ResourceNotFoundError(f"YouTube playlist '{playlist_name}' not found.")
+        yt_playlist_id = yt_playlist['id']
+        yt_tracks = yt.get_playlist_items(yt_playlist_id, db)  # Should return list of dicts with 'name' and 'artist'
+        if not yt_tracks:
+            raise ResourceNotFoundError(f"YouTube playlist '{playlist_name}' is empty.")
+
+        # Fetch Spotify playlist tracks (if exists)
+        sp = SpotifyProvider(user_id)
+        sp_playlist = sp.get_playlist_by_name(playlist_name)
+        if not sp_playlist:
+            sp_tracks = []
+        else:
+            sp_playlist_id = sp_playlist['id']
+            sp_tracks = sp.get_playlist_items(sp_playlist_id)  # Should return list of dicts with 'name' and 'artist'
+        sp_track_keys = set(normalize_track(t) for t in sp_tracks) if sp_tracks else set()
+
+        # Determine which tracks need to be synced
+        tracks_to_sync = [t for t in yt_tracks if normalize_track(t) not in sp_track_keys]
+        original_count = len(tracks_to_sync)
+
+        # Quota logic (adjust as needed for Spotify API limits)
+        COST_PER_TRACK = 1  # Example: 1 unit per track for Spotify
+        QUOTA_THRESHOLD = 1000  # Example: 1000 units per sync
+        quota_cost = original_count * COST_PER_TRACK
+        reduced = False
+        reduced_count = original_count
+        if quota_cost > QUOTA_THRESHOLD:
+            # Cut the list to the first 1000 tracks (or another limit)
+            tracks_to_sync = tracks_to_sync[:1000]
+            reduced = True
+            reduced_count = len(tracks_to_sync)
+            logger.info(f"Pre-sync check: Playlist '{playlist_name}' for user {user_id} reduced from {original_count} to {reduced_count} tracks due to quota.")
+
+        return {
+            "tracks_to_sync": tracks_to_sync,
+            "reduced": reduced,
+            "original_count": original_count,
+            "final_count": reduced_count,
+            "quota_cost": quota_cost,
+            "quota_threshold": QUOTA_THRESHOLD
+        }
+    except Exception as e:
+        logger.error(f"Error in pre_sync_check_yt_to_sp: {str(e)}")
+        raise APIError(f"Failed pre-sync check: {str(e)}")

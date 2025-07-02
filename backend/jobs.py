@@ -8,7 +8,7 @@ import re
 from pydantic import BaseModel
 import logging
 from tasks import run_sync_sp_to_yt_job, run_sync_yt_to_sp_job, run_merge_playlists_job, run_finalize_job
-from src.db.youtube_quota import get_total_quota_used
+from src.db.youtube_quota import get_total_quota_used, reserve_quota_atomic
 from src.functions.helpers.sp_provider import get_spotify_client
 from spotipy import SpotifyException
 import math
@@ -48,104 +48,174 @@ def validate_playlist_name(playlist_name: str):
 def start_sync_sp_to_yt(request: SyncRequest, db: Session = Depends(get_db)):
     validate_playlist_name(request.playlist_name)
 
-    # --- YouTube Quota Pre-calculation ---
+
     QUOTA_PER_SONG_SP_TO_YT = 51  # 1 for list, 50 for insert
     QUOTA_LIMIT = 10000
-    QUOTA_BUFFER = 500 # Keep a 500 unit buffer
+    QUOTA_BUFFER = 500
 
     try:
-        # 1. Get current quota usage
-        current_usage = get_total_quota_used(db)
-        available_quota = QUOTA_LIMIT - current_usage - QUOTA_BUFFER
-
-        # 2. Get Spotify playlist track count
         sp = get_spotify_client(request.user_id)
         if not sp:
             raise HTTPException(status_code=401, detail="Spotify authentication required.")
-        
         playlists = sp.current_user_playlists()
         target_playlist = next((p for p in playlists.get('items', []) if p['name'] == request.playlist_name), None)
         if not target_playlist:
             raise HTTPException(status_code=404, detail=f"Spotify playlist '{request.playlist_name}' not found.")
-        
         track_count = target_playlist['tracks']['total']
         estimated_cost = track_count * QUOTA_PER_SONG_SP_TO_YT
 
-        song_limit = None
+        # --- Atomic Quota Reservation ---
         job_notes = None
-
-        # 3. Decision Logic
-        if estimated_cost > available_quota:
+        # Try to reserve quota for the full request
+        if not reserve_quota_atomic(db, estimated_cost, QUOTA_LIMIT - QUOTA_BUFFER):
+            # Not enough quota for full request, try partial
+            available_quota = QUOTA_LIMIT - QUOTA_BUFFER - get_total_quota_used(db)
             songs_to_sync = math.floor(available_quota / QUOTA_PER_SONG_SP_TO_YT)
             if songs_to_sync < 1:
                 raise HTTPException(
                     status_code=429,
                     detail="Insufficient YouTube API quota to sync any songs. Please try again after the quota resets."
                 )
-            # Partial sync is possible
-            song_limit = songs_to_sync
+            partial_cost = songs_to_sync * QUOTA_PER_SONG_SP_TO_YT
+            if not reserve_quota_atomic(db, partial_cost, QUOTA_LIMIT - QUOTA_BUFFER):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Insufficient YouTube API quota to sync any songs. Please try again after the quota resets."
+                )
             job_notes = f"Sync limited to {songs_to_sync} of {track_count} songs due to YouTube API quota."
-            logger.info(f"Partial sync for playlist '{request.playlist_name}'. Song limit: {song_limit}")
+            logger.info(f"Partial sync for playlist '{request.playlist_name}'. Song limit: {songs_to_sync}")
+            song_limit = min(songs_to_sync, 50)
+        else:
+            song_limit = min(track_count, 50)
 
     except SpotifyException as e:
         logger.error(f"Spotify API error for user {request.user_id}: {e}")
         raise HTTPException(status_code=401, detail="Could not connect to Spotify. Please re-authenticate.")
     except HTTPException as e:
-        # Re-raise HTTPExceptions to be handled by FastAPI
         raise e
     except Exception as e:
         logger.error(f"Error during quota pre-calculation for user {request.user_id}: {e}")
         raise HTTPException(status_code=500, detail="An unexpected error occurred while checking API quotas.")
 
-    # --- Job Creation ---
+    if track_count == 0:
+        job_id = uuid.uuid4()
+        logger.info(f"No songs to sync for playlist '{request.playlist_name}'. Creating completed job {job_id}.")
+        job = Job(
+            job_id=job_id,
+            user_id=request.user_id,
+            type="sync_sp_to_yt",
+            status="completed",
+            playlist_name=request.playlist_name,
+            job_notes="No songs to sync. All songs already exist on YouTube or playlist is empty.",
+            result={"songs": [], "note": "No songs to sync."}
+        )
+        db.add(job)
+        db.commit()
+        logger.info(f"Created completed job {job_id} in database (no songs to sync)")
+        return {"job_id": str(job_id)}
+
     job_id = uuid.uuid4()
     logger.info(f"Starting sync job {job_id} for playlist '{request.playlist_name}'")
-    
     job = Job(
         job_id=job_id,
         user_id=request.user_id,
         type="sync_sp_to_yt",
         status="pending",
         playlist_name=request.playlist_name,
-        job_notes=job_notes # Add the note here
+        job_notes=job_notes
     )
     db.add(job)
     db.commit()
     logger.info(f"Created job {job_id} in database")
-    
     logger.info(f"Queueing task run_sync_sp_to_yt_job for job {job_id}")
     result = run_sync_sp_to_yt_job.apply_async(
-        args=(str(job_id), request.playlist_name, request.user_id, song_limit), # Pass song_limit
+        args=(str(job_id), request.playlist_name, request.user_id, song_limit),
         queue='jobs'
     )
     logger.info(f"Task queued with task_id: {result.id}")
-    
     return {"job_id": str(job_id)}
 
 @router.post("/sync_yt_to_sp", status_code=202)
 def start_sync_yt_to_sp(request: SyncRequest, db: Session = Depends(get_db)):
     validate_playlist_name(request.playlist_name)
+
+
+    QUOTA_PER_SONG_YT_TO_SP = 1  # Adjust as needed for your actual quota cost
+    QUOTA_LIMIT = 10000
+    QUOTA_BUFFER = 500
+
+    try:
+        # You need to implement a way to get the YouTube playlist and its track count for the user
+        # For now, let's assume you have a function get_yt_playlist_track_count(user_id, playlist_name)
+        from src.db.youtube_quota import get_yt_playlist_track_count
+        track_count = get_yt_playlist_track_count(request.user_id, request.playlist_name)
+        estimated_cost = track_count * QUOTA_PER_SONG_YT_TO_SP
+
+        job_notes = None
+        # Try to reserve quota for the full request
+        if not reserve_quota_atomic(db, estimated_cost, QUOTA_LIMIT - QUOTA_BUFFER):
+            # Not enough quota for full request, try partial
+            available_quota = QUOTA_LIMIT - QUOTA_BUFFER - get_total_quota_used(db)
+            songs_to_sync = math.floor(available_quota / QUOTA_PER_SONG_YT_TO_SP)
+            if songs_to_sync < 1:
+                raise HTTPException(
+                    status_code=429,
+                    detail="Insufficient YouTube API quota to sync any songs. Please try again after the quota resets."
+                )
+            partial_cost = songs_to_sync * QUOTA_PER_SONG_YT_TO_SP
+            if not reserve_quota_atomic(db, partial_cost, QUOTA_LIMIT - QUOTA_BUFFER):
+                raise HTTPException(
+                    status_code=429,
+                    detail="Insufficient YouTube API quota to sync any songs. Please try again after the quota resets."
+                )
+            job_notes = f"Sync limited to {songs_to_sync} of {track_count} songs due to YouTube API quota."
+            logger.info(f"Partial sync for playlist '{request.playlist_name}'. Song limit: {songs_to_sync}")
+            song_limit = min(songs_to_sync, 50)
+        else:
+            song_limit = min(track_count, 50)
+
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        logger.error(f"Error during quota pre-calculation for user {request.user_id}: {e}")
+        raise HTTPException(status_code=500, detail="An unexpected error occurred while checking API quotas.")
+
+    if track_count == 0:
+        job_id = uuid.uuid4()
+        logger.info(f"No songs to sync for playlist '{request.playlist_name}'. Creating completed job {job_id}.")
+        job = Job(
+            job_id=job_id,
+            user_id=request.user_id,
+            type="sync_yt_to_sp",
+            status="completed",
+            playlist_name=request.playlist_name,
+            job_notes="No songs to sync. All songs already exist on Spotify or playlist is empty.",
+            result={"songs": [], "note": "No songs to sync."}
+        )
+        db.add(job)
+        db.commit()
+        logger.info(f"Created completed job {job_id} in database (no songs to sync)")
+        return {"job_id": str(job_id)}
+
     job_id = uuid.uuid4()
     logger.info(f"Starting sync job {job_id} for playlist '{request.playlist_name}'")
-    
     job = Job(
         job_id=job_id,
         user_id=request.user_id,
         type="sync_yt_to_sp",
         status="pending",
         playlist_name=request.playlist_name,
+        job_notes=job_notes
     )
     db.add(job)
     db.commit()
     logger.info(f"Created job {job_id} in database")
-    
     logger.info(f"Queueing task run_sync_yt_to_sp_job for job {job_id}")
     result = run_sync_yt_to_sp_job.apply_async(
-        args=(str(job_id), request.playlist_name, request.user_id),
+        args=(str(job_id), request.playlist_name, request.user_id, song_limit),
         queue='jobs'
     )
     logger.info(f"Task queued with task_id: {result.id}")
-    
     return {"job_id": str(job_id)}
 
 @router.post("/merge_playlists", status_code=202)

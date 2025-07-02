@@ -14,7 +14,8 @@ export interface SongStatus {
 }
 
 export interface Process {
-  id: string;
+  id: string; // UI process id (for React list keys)
+  jobId?: string; // Backend job UUID (for backend operations)
   type: string;
   status: "pending" | "in-progress" | "completed" | "error" | "done";
   message: string;
