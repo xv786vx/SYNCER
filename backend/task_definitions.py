@@ -1,5 +1,4 @@
-from src.db import Job
-from src.db.youtube_token import SessionLocal
+from db_models import Job, SessionLocal
 from src.functions.sync_sp_to_yt import sync_sp_to_yt
 from src.functions.sync_yt_to_sp import sync_yt_to_sp
 from src.functions.merge_playlists import merge_playlists
@@ -7,6 +6,8 @@ from src.functions.helpers.sp_provider import SpotifyProvider
 from src.functions.helpers.yt_provider import YoutubeProvider
 from sqlalchemy.orm import Session
 import logging
+import datetime
+from typing import Any
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,17 +30,29 @@ def _update_job_status(db: Session, job_id: str, status: str, result: dict = Non
         db.rollback()
         logger.error(f"Failed to update job {job_id}: {e}")
 
-def run_sync_sp_to_yt_job(job_id: str, playlist_name: str, user_id: str):
+def run_sync_sp_to_yt_job(job_id: str, playlist_name: str, user_id: str, song_limit: int | None = None, tracks_to_sync: list[Any] | None = None):
     logger.info(f"=== TASK STARTED: run_sync_sp_to_yt_job ===")
     logger.info(f"Job ID: {job_id}")
     logger.info(f"Playlist: {playlist_name}")
     logger.info(f"User ID: {user_id}")
+
+    if song_limit is not None:
+        logger.info(f"Song limit: {song_limit}")
+    if tracks_to_sync is not None:
+        logger.info(f"Custom track list provided: {len(tracks_to_sync)} tracks")
+        # Enforce song_limit on tracks_to_sync if provided
+        if song_limit is not None:
+            tracks_to_sync = tracks_to_sync[:song_limit]
     
     db = SessionLocal()
     try:
         logger.info(f"Starting Spotify to YouTube sync for playlist '{playlist_name}'")
         sp = SpotifyProvider(user_id)
-        songs = sync_sp_to_yt(playlist_name, sp, db)
+        # If tracks_to_sync is provided, pass it to sync_sp_to_yt (requires sync_sp_to_yt to support it)
+        if tracks_to_sync is not None:
+            songs = sync_sp_to_yt(playlist_name, sp, db, song_limit=song_limit, tracks_to_sync=tracks_to_sync)
+        else:
+            songs = sync_sp_to_yt(playlist_name, sp, db, song_limit=song_limit)
         logger.info(f"Sync completed, found {len(songs) if songs else 0} songs")
         _update_job_status(db, job_id, 'ready_to_finalize', result={'songs': songs})
         logger.info(f"=== TASK COMPLETED: run_sync_sp_to_yt_job ===")
@@ -50,17 +63,28 @@ def run_sync_sp_to_yt_job(job_id: str, playlist_name: str, user_id: str):
     finally:
         db.close()
 
-def run_sync_yt_to_sp_job(job_id: str, playlist_name: str, user_id: str):
+def run_sync_yt_to_sp_job(job_id: str, playlist_name: str, user_id: str, song_limit: int | None = None, tracks_to_sync: list[Any] | None = None):
     logger.info(f"=== TASK STARTED: run_sync_yt_to_sp_job ===")
     logger.info(f"Job ID: {job_id}")
     logger.info(f"Playlist: {playlist_name}")
     logger.info(f"User ID: {user_id}")
     
+    if song_limit is not None:
+        logger.info(f"Song limit: {song_limit}")
+    if tracks_to_sync is not None:
+        logger.info(f"Custom track list provided: {len(tracks_to_sync)} tracks")
+        # Enforce song_limit on tracks_to_sync if provided
+        if song_limit is not None:
+            tracks_to_sync = tracks_to_sync[:song_limit]
+
     db = SessionLocal()
     try:
         logger.info(f"Starting YouTube to Spotify sync for playlist '{playlist_name}'")
         yt = YoutubeProvider(user_id)
-        songs = sync_yt_to_sp(playlist_name, yt, db)
+        if tracks_to_sync is not None:
+            songs = sync_yt_to_sp(playlist_name, yt, db, song_limit=song_limit, tracks_to_sync=tracks_to_sync)
+        else:
+            songs = sync_yt_to_sp(playlist_name, yt, db, song_limit=song_limit)
         logger.info(f"Sync completed, found {len(songs) if songs else 0} songs")
         _update_job_status(db, job_id, 'ready_to_finalize', result={'songs': songs})
         logger.info(f"=== TASK COMPLETED: run_sync_yt_to_sp_job ===")
@@ -91,4 +115,52 @@ def run_merge_playlists_job(job_id: str, yt_playlist: str, sp_playlist: str, new
         _update_job_status(db, job_id, 'error', error=str(e))
         logger.info(f"=== TASK FAILED: run_merge_playlists_job ===")
     finally:
-        db.close() 
+        db.close()
+
+def run_finalize_job(job_id: str):
+    logger.info(f"=== TASK STARTED: run_finalize_job ===")
+    logger.info(f"Job ID: {job_id}")
+    db = SessionLocal()
+    try:
+        job = db.query(Job).filter_by(job_id=job_id).first()
+        if not job:
+            logger.error(f"Finalize task: Job {job_id} not found.")
+            return
+
+        # Add a check to ensure the job is in the 'finalizing' state
+        if job.status != 'finalizing':
+            logger.warning(f"Job {job_id} is not in 'finalizing' state (current: {job.status}). Aborting finalize task.")
+            return
+
+        songs = job.result.get("songs", []) if job.result else []
+        
+        if job.type == "sync_sp_to_yt":
+            yt_ids = [song.get("yt_id") for song in songs if song.get("status") == "found" and song.get("yt_id")]
+            if yt_ids:
+                yt = YoutubeProvider(job.user_id)
+                pl_info = yt.get_playlist_by_name(job.playlist_name, db)
+                if pl_info is None:
+                    pl_info = yt.create_playlist(job.playlist_name, db)
+                playlist_id = pl_info['id']
+                yt.add_to_playlist(playlist_id, yt_ids, db)
+                
+        elif job.type == "sync_yt_to_sp":
+            sp_ids = [song.get("sp_id") for song in songs if song.get("status") == "found" and song.get("sp_id")]
+            if sp_ids:
+                sp = SpotifyProvider(job.user_id)
+                pl_info = sp.get_playlist_by_name(job.playlist_name)
+                if pl_info is None:
+                    pl_info = sp.create_playlist(job.playlist_name)
+                playlist_id = pl_info['id']
+                sp.add_to_playlist(playlist_id, sp_ids)
+
+        _update_job_status(db, job_id, "completed")
+        logger.info(f"Successfully finalized and completed job {job_id}")
+        logger.info(f"=== TASK COMPLETED: run_finalize_job ===")
+
+    except Exception as e:
+        logger.error(f"Error finalizing job {job_id}: {str(e)}", exc_info=True)
+        _update_job_status(db, job_id, "error", error=str(e))
+        logger.info(f"=== TASK FAILED: run_finalize_job ===")
+    finally:
+        db.close()

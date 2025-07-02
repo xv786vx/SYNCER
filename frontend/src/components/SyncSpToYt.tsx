@@ -5,9 +5,14 @@ import { APIErrorHandler } from '../utils/errorHandling';
 interface SyncSpToYtProps {
   onSync: (playlistName: string, userId: string) => Promise<void>;
   userId: string;
+  quotaExceeded: boolean;
+  quota: { total: number; limit: number } | null;
+  countdown: number;
+  formatMs: (ms: number) => string;
+  isReadyToSync: boolean | null;
 }
 
-export function SyncSpToYt({ onSync, userId }: SyncSpToYtProps) {
+export function SyncSpToYt({ onSync, userId, quotaExceeded, quota, countdown, formatMs, isReadyToSync }: SyncSpToYtProps) {
   const [spPlaylist, setSpPlaylist] = useState('');
   const [isCheckingAuth, setIsCheckingAuth] = useState(false);
 
@@ -40,15 +45,25 @@ export function SyncSpToYt({ onSync, userId }: SyncSpToYtProps) {
           onChange={(e) => setSpPlaylist(e.target.value)}
           placeholder="Playlist Name..."
           className="bg-transparent border-0 border-b-2 border-brand-green-dark focus:border-brand-green focus:outline-none text-white placeholder-gray-400 px-0 py-2 w-full"
-          disabled={isCheckingAuth}
+          disabled={isCheckingAuth || !isReadyToSync || quotaExceeded}
         />
         <button
           onClick={handleSync}
           className="w-full py-2 bg-brand-red-dark text-white rounded-md hover:bg-brand-red focus:outline-none focus:ring-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          disabled={isCheckingAuth}
+          disabled={isCheckingAuth || !isReadyToSync || quotaExceeded}
         >
-          {isCheckingAuth ? 'Checking Auth...' : <>Sync to <SiYoutube className="inline-block align-text-bottom ml-0.5" /></>}
+          {isCheckingAuth ? 'Checking Auth...' : quotaExceeded ? 'Quota Exceeded' : <>Sync to <SiYoutube className="inline-block align-text-bottom ml-0.5" /></>}
         </button>
+        {!isReadyToSync && (
+          <p className="text-xs text-center text-yellow-400">Please authenticate with both Spotify and YouTube first.</p>
+        )}
+        {quotaExceeded && quota && (
+          <div className="text-center text-xs text-red-400">
+            <p>You have exceeded your daily YouTube API quota.</p>
+            <p>Quota resets in: {formatMs(countdown)}</p>
+            <p>({quota.total} / {quota.limit})</p>
+          </div>
+        )}
       </div>
     </div>
   );

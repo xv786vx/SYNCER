@@ -18,6 +18,7 @@ def _get_today_est():
     """Returns the current date in EST."""
     return datetime.datetime.now(EST).date()
 
+
 def increment_quota(db: Session, count: int = 1):
     today = _get_today_est()
     quota = db.query(YoutubeQuota).filter_by(date=today).first()
@@ -26,6 +27,35 @@ def increment_quota(db: Session, count: int = 1):
         db.add(quota)
     quota.total += count
     db.commit()
+
+# --- Atomic Quota Reservation ---
+from sqlalchemy import update
+
+def reserve_quota_atomic(db: Session, required_units: int, quota_limit: int) -> bool:
+    """
+    Atomically reserve quota units for today.
+    Returns True if reservation succeeded, False if not enough quota.
+    """
+    today = _get_today_est()
+    # Ensure today's row exists
+    quota = db.query(YoutubeQuota).filter_by(date=today).first()
+    if not quota:
+        quota = YoutubeQuota(date=today, total=0)
+        db.add(quota)
+        db.commit()
+        db.refresh(quota)
+    # Atomic update: only increment if enough quota remains
+    result = db.execute(
+        update(YoutubeQuota)
+        .where(
+            YoutubeQuota.date == today,
+            YoutubeQuota.total + required_units <= quota_limit
+        )
+        .values(total=YoutubeQuota.total + required_units)
+        .execution_options(synchronize_session=False)
+    )
+    db.commit()
+    return result.rowcount == 1  # True if update succeeded, False if not enough quota
 
 def get_total_quota_used(db: Session):
     today = _get_today_est()

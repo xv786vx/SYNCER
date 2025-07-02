@@ -6,34 +6,35 @@ interface ProcessItemProps {
   process: Process;
 }
 
+
+function formatSecondsToMMSS(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
 function ProcessItem({ process }: ProcessItemProps) {
-  const [remainingTime, setRemainingTime] = useState<number | null>(null);
+  // Use local state for countdown, but always recalculate from countdownEnd for accuracy
+  const [now, setNow] = useState(Date.now());
 
   useEffect(() => {
     if (process.countdownEnd && process.status === 'in-progress') {
-      const calculateRemaining = () => {
-        const remaining = Math.round((process.countdownEnd! - Date.now()) / 1000);
-        setRemainingTime(remaining > 0 ? remaining : 0);
-      };
-
-      calculateRemaining(); // Initial calculation
-      const interval = setInterval(calculateRemaining, 1000);
-
+      const interval = setInterval(() => {
+        setNow(Date.now());
+      }, 1000);
       return () => clearInterval(interval);
-    } else {
-      setRemainingTime(null); // No countdown if not in-progress or no end time
     }
   }, [process.countdownEnd, process.status]);
 
-  // Determine main message and sub-message
   let mainText = process.message || '';
   let subText: string | null = null;
 
-  // If we have a live countdown, it takes precedence.
-  if (remainingTime !== null) {
+  // Live countdown logic (always up-to-date)
+  if (process.countdownEnd && process.status === 'in-progress') {
+    const remaining = Math.max(0, Math.round((process.countdownEnd - now) / 1000));
     mainText = `Syncing "${process.playlistName}"...`;
-    if (remainingTime > 0) {
-      subText = `(Est. ${remainingTime}s)`;
+    if (remaining > 0) {
+      subText = `(Est. ${formatSecondsToMMSS(remaining)})`;
     } else {
       mainText = `Still working on "${process.playlistName}"...`;
     }
@@ -41,8 +42,8 @@ function ProcessItem({ process }: ProcessItemProps) {
     // No live countdown, check if the original message has a static estimate.
     const match = mainText.match(/(.*) (\(Est\. \d+s\))/);
     if (match) {
-        mainText = match[1].trim();
-        subText = match[2];
+      mainText = match[1].trim();
+      subText = match[2];
     }
   }
 

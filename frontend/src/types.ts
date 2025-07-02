@@ -14,7 +14,8 @@ export interface SongStatus {
 }
 
 export interface Process {
-  id: string;
+  id: string; // UI process id (for React list keys)
+  jobId?: string; // Backend job UUID (for backend operations)
   type: string;
   status: "pending" | "in-progress" | "completed" | "error" | "done";
   message: string;
@@ -39,4 +40,20 @@ export interface APIResponse {
 export interface StatusResponse {
   name: string;
   authenticated: boolean;
+}
+
+export interface Job {
+  job_id: string;
+  status:
+    | "pending"
+    | "in-progress"
+    | "ready_to_finalize"
+    | "completed"
+    | "error";
+  result?: { songs?: SongStatus[] };
+  error?: string;
+  type?: string;
+  playlist_name?: string;
+  updated_at?: string;
+  job_notes?: string | null;
 }

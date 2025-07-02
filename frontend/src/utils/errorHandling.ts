@@ -23,7 +23,7 @@ export class APIErrorHandler {
     }
     // Handle cases where the response is empty (e.g., 204 No Content)
     const text = await response.text();
-    return text ? JSON.parse(text) : null;
+    return text ? JSON.parse(text) : ({} as T);
   }
 
   static handleError(
