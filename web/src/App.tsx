@@ -5,6 +5,7 @@ import TermsOfService from './pages/TermsOfService';
 import YoutubeAuthSuccessPage from './pages/YoutubeAuthSuccessPage';
 import SpotifyAuthSuccessPage from './pages/SpotifyAuthSuccessPage';
 import Dither from './components/Dither';
+import MarqueePromo from './pages/MarqueePromo';
 import './App.css'
 import './index.css'
 
@@ -30,6 +31,7 @@ function App() {
           <Route path="/terms-of-service" element={<TermsOfService />} />
           <Route path="/youtube-auth-success" element={<YoutubeAuthSuccessPage />} />
           <Route path="/spotify-auth-success" element={<SpotifyAuthSuccessPage />} />
+          <Route path="/marquee-promo" element={<MarqueePromo />} />
           {/* Add more routes as needed */}
         </Routes>
       </div>
