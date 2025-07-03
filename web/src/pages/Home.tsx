@@ -10,7 +10,7 @@ function Home() {
         </p>
         
         <video
-          src="/syncerpromovid.mp4"
+          src="/syncer new promo vid.mp4"
           autoPlay
           loop
           muted
