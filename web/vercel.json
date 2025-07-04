@@ -8,7 +8,7 @@
           "value": "www.getsyncer.tech"
         }
       ],
-      "destination": "https://getsyncer.tech/:1",
+      "destination": "https://getsyncer.tech/$1",
       "permanent": true
     }
   ],
