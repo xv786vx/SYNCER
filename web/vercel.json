@@ -1,4 +1,17 @@
 {
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.getsyncer.tech"
+        }
+      ],
+      "destination": "https://getsyncer.tech/:1",
+      "permanent": true
+    }
+  ],
   "rewrites": [
     {
       "source": "/:path((?!.*\\.).*)",
