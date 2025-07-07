@@ -11,7 +11,7 @@ import './index.css'
 
 function App() {
   return (
-    <div className="min-h-screen w-screen bg-black flex flex-col relative overflow-hidden">
+    <div className="min-h-screen w-full bg-black flex flex-col relative">
       {/* Dither background - global */}
       <div className="absolute inset-0 z-0 w-full h-full">
         <Dither />
