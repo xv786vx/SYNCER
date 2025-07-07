@@ -9,7 +9,7 @@ A Chrome extension that lets you sync and merge your Spotify and YouTube playlis
 
 ## 🌐 Live Links & Dashboards
 
-- **Website:** [https://syncer-web-three.vercel.app](https://syncer-26vh.onrender.com)
+- **Website:** [https://getsyncer.tech](https://getsyncer.tech)
 - **Chrome Extension Releases:** [GitHub Releases](https://github.com/xv786vx/SYNCER/releases)
 - **Backend API:** [https://syncer-26vh.onrender.com](https://syncer-26vh.onrender.com)
 - **Spotify Developer Dashboard:** [Spotify Dashboard](https://developer.spotify.com/dashboard/applications)
