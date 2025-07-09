@@ -1,5 +1,13 @@
 /* Fix body styling that was constraining width */
-html,
+html {
+  overflow-x: hidden;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  width: 100%;
+  scroll-behavior: smooth;
+}
+
 body {
   overflow-x: hidden;
   margin: 0;
@@ -23,6 +31,24 @@ body {
 *::before,
 *::after {
   box-sizing: border-box;
+}
+
+/* Custom scrollbar for webkit browsers */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #1a1a1a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }
 
 /* Removed max-width, margin, and padding from #root to allow full-screen layout */

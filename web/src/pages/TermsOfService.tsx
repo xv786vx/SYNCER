@@ -10,7 +10,7 @@ function TermsOfService() {
   }, []);
 
   return (
-    <div className="flex-1 w-full h-full text-white flex flex-col items-center relative">
+    <div className="flex-1 w-full h-full text-white flex flex-col items-center relative pt-16">
       {/* Main content */}
       <div className="relative z-10 flex flex-col items-center w-full p-6 flex-1 h-full">
         <h1 className="text-4xl font-bold mb-4 font-cascadia">Terms of Service</h1>
