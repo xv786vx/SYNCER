@@ -4,7 +4,7 @@
 # SYNCER
 
 A Chrome extension that lets you sync and merge your Spotify and YouTube playlists seamlessly — powered by FastAPI, React, and Docker and deployed with Render and Vercel.
-## Currently its not on the Chrome Store (will be up within the next 2-6 weeks)
+## Its live! Check the extension on the Chrome Web Store [here](https://chromewebstore.google.com/detail/syncer/ggkbmppglbhmcoiplbopfldojdnehabh?authuser=0&hl=en)
 </div>
 
 ## 🌐 Live Links & Dashboards
