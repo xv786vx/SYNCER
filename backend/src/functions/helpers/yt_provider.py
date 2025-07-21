@@ -35,7 +35,7 @@ class YoutubeProvider(Provider):
         self.user_id = user_id
         print(f"[YTProvider] Using user_id: {self.user_id}")
         scopes = ['https://www.googleapis.com/auth/youtube.readonly',
-                  'https://www.googleapis.com/auth/youtube']
+                  'https://www.googleapis.com/auth/youtube.force-ssl']
 
         # CLIENT_SECRETS_FILE logic can remain as it's for the app's credentials
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))

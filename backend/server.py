@@ -374,7 +374,7 @@ def get_youtube_auth_url(user_id: str):
     try:
         client_secrets_file = ensure_youtube_client_secrets()
         scopes = [
-            'https://www.googleapis.com/auth/youtube',
+            'https://www.googleapis.com/auth/youtube.force-ssl',
             'https://www.googleapis.com/auth/youtube.readonly',
         ]
         redirect_uri = os.environ.get("YT_WEB_REDIRECT_URI", "https://syncer-26vh.onrender.com/youtube_callback")
@@ -404,7 +404,7 @@ def youtube_callback(code: str, state: str = None, user_id: str = None):
         user_id = state
         client_secrets_file = os.path.join(os.path.dirname(__file__), 'src', 'auth_tokens', 'desktop_client_secrets.json')
         scopes = [
-            'https://www.googleapis.com/auth/youtube',
+            'https://www.googleapis.com/auth/youtube.force-ssl',
             'https://www.googleapis.com/auth/youtube.readonly',
         ]
         redirect_uri = os.environ.get("YT_WEB_REDIRECT_URI", "https://syncer-26vh.onrender.com/youtube_callback")
