@@ -18,7 +18,7 @@ export interface Process {
   jobId?: string; // Backend job UUID (for backend operations)
   type: string;
   status: "pending" | "in-progress" | "completed" | "error" | "done";
-  message: string;
+  message?: string;
   subMessage?: string;
   playlistName?: string; // Optional: for countdown message
   countdownEnd?: number | undefined; // Optional: timestamp for countdown end
@@ -56,4 +56,48 @@ export interface Job {
   playlist_name?: string;
   updated_at?: string;
   job_notes?: string | null;
+}
+
+export interface PreSyncCheckSpToYtResponse {
+  tracks_to_sync: SongStatus[];
+  reduced: boolean;
+  original_count?: number;
+  final_count?: number;
+}
+
+export interface StartSyncSpToYtResponse {
+  job_id: string;
+}
+
+export interface PreSyncCheckYtToSpResponse {
+  tracks_to_sync: SongStatus[];
+  reduced: boolean;
+  original_count?: number;
+  final_count?: number;
+  quota_cost?: number;
+  quota_threshold?: number;
+}
+
+export interface StartSyncYtToSpResponse {
+  job_id: string;
+}
+
+export interface ManualSearchResult {
+  yt_id: string;
+  sp_id?: string;
+  title: string;
+  artist: string;
+  thumbnail: string;
+}
+
+export interface ManualSearchModalProps {
+  song: SongStatus | null;
+  onClose: () => void;
+  onSelectSong: (song: SongStatus, newSongDetails: ManualSearchResult) => void;
+  manualSearchApi: (
+    query: string,
+    artist: string,
+    userId: string
+  ) => Promise<ManualSearchResult[]>;
+  userId: string;
 }

@@ -106,6 +106,7 @@ export function ProcessesOverlay({ processes, onDismiss }: ProcessesOverlayProps
         onClick={e => e.stopPropagation()}
         style={{ cursor: 'default' }}
       >
+
         <h3 className="text-lg font-semibold mb-4 text-center">Processes</h3>
         <div className="space-y-3">
           {processes.map(process => (

@@ -1,23 +1,8 @@
 import { motion } from 'framer-motion';
 import { useState } from 'react';
-import { SongStatus } from '../types';
+import { ManualSearchResult, ManualSearchModalProps } from '../types';
 import { LoadingSpinner } from './LoadingSpinner';
 
-export interface ManualSearchResult {
-  yt_id: string;
-  sp_id?: string;
-  title: string;
-  artist: string;
-  thumbnail: string;
-}
-
-interface ManualSearchModalProps {
-  song: SongStatus | null;
-  onClose: () => void;
-  onSelectSong: (song: SongStatus, newSongDetails: ManualSearchResult) => void;
-  manualSearchApi: (query: string, artist: string, userId: string) => Promise<ManualSearchResult[]>;
-  userId: string;
-}
 
 export function ManualSearchModal({
   song,

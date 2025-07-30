@@ -1,7 +1,7 @@
 // import reactLogo from './assets/react.svg'
 // import viteLogo from '/vite.svg'
 // import './App.css'
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { FaSpotify } from 'react-icons/fa';
 import { SiYoutube } from 'react-icons/si';
 import './App.css';
@@ -15,15 +15,28 @@ import { DownloadSong } from './components/DownloadSong';
 import { SongSyncStatus } from './components/SongSyncStatus';
 import { ToastContainer } from './components/Toast';
 import { ToastNotification } from './components/ToastNotification';
-import { ManualSearchModal, ManualSearchResult } from './components/ManualSearchModal';
-import type { SongStatus, Process, APIResponse, StatusResponse, Job } from './types';
+import { ManualSearchModal } from './components/ManualSearchModal';
+import type { SongStatus, Process, StatusResponse, Job, ManualSearchResult } from './types';
 import { motion, AnimatePresence } from 'framer-motion'
 import Dither from "./components/Dither";
-import { startYoutubeOAuth } from './utils/apiClient';
+
 import { getOrCreateUserId } from './utils/userId';
 import { usePersistentState } from './utils/usePersistentState';
 import NoSongsToSync from './components/NoSongsToSync';
-import type { PreSyncCheckYtToSpResponse } from './utils/apiClient';
+
+import { useBackendStatus } from './hooks/useBackendStatus';
+import { handleMergePlaylists, handleSyncSpToYt, handleSyncYtToSp, handleDownloadSong } from './utils/syncUtils';
+import { ensureYoutubeAuth, ensureSpotifyAuth } from './utils/authUtils';
+
+import { useYoutubeQuota } from './hooks/useYoutubeQuota';
+import { useToast } from './hooks/useToast';
+import { useProcesses } from './hooks/useProcesses';
+import { useTab } from './hooks/useTab';
+import { useManualSearch } from './hooks/useManualSearch';
+import { useJobPolling } from './hooks/useJobPolling';
+import { useFinalizeSync } from './hooks/useFinalizeSync';
+import { useAuthStatus } from './hooks/useAuthStatus';
+import { useNoSongsToSyncFade } from './hooks/useNoSongsToSyncFade';
 
 // New state for backend status
 enum BackendStatus {
@@ -32,15 +45,6 @@ enum BackendStatus {
   OFFLINE,
 }
 
-// Define a type for our jobs
-// interface Job {
-//   job_id: string;
-//   status: 'pending' | 'in-progress' | 'ready_to_finalize' | 'completed' | 'error';
-//   result?: { songs?: SongStatus[]; result?: string };
-//   error?: string;
-//   type?: 'sync_sp_to_yt' | 'sync_yt_to_sp' | 'merge';
-//   playlist_name?: string;
-// }
 
 function getMsUntilMidnightEST() {
   const now = new Date();
@@ -70,42 +74,20 @@ function formatMs(ms: number) {
     .padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
 }
 
-// Add at the top, after imports
-interface PreSyncCheckSpToYtResponse {
-  tracks_to_sync: SongStatus[];
-  reduced: boolean;
-  original_count?: number;
-  final_count?: number;
-}
-
-interface StartSyncSpToYtResponse { job_id: string; }
-
-// Add missing interface for YT to SP pre-sync response
-interface StartSyncYtToSpResponse { job_id: string };
-
 function App() {
   // Use persistent userId from Chrome storage or localStorage
   const [userId, setUserId] = useState<string | null>(null);
-  const [backendStatus, setBackendStatus] = useState<BackendStatus>(BackendStatus.CONNECTING);
   const [data, setData] = useState<StatusResponse>({ name: '', authenticated: false })
-  const [pendingTab, setPendingTab] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = usePersistentState<string>('activeTab', "1");
-  const [displayedTab, setDisplayedTab] = usePersistentState<string>('displayedTab', "1"); // controls which tab's content is shown
   const [processes, setProcesses] = usePersistentState<Process[]>('processes', [])
   const processesRef = useRef(processes);
   processesRef.current = processes;
-  const [songs, setSongs] = usePersistentState<SongStatus[]>('songs', [])
+  const [spToYtSongs, setSpToYtSongs] = usePersistentState<SongStatus[]>('songs', [])
   const [ytToSpSongs, setYtToSpSongs] = usePersistentState<SongStatus[]>('ytToSpSongs', [])
-  const [toast, setToast] = useState<string | null>(null)
-  const [quota, setQuota] = useState<{ total: number; limit: number } | null>(null);
   const [countdown, setCountdown] = useState(getMsUntilMidnightEST());
-  const [tabFade, setTabFade] = useState(true);
   const [processFadeOut, ] = useState(false);
   const [isYoutubeAuthenticated, setIsYoutubeAuthenticated] = useState<boolean | null>(null);
   const [isSpotifyAuthenticated, setIsSpotifyAuthenticated] = useState<boolean | null>(null);
-  const [manualSearchSong, setManualSearchSong] = useState<SongStatus | null>(null);
-  const [manualSearchIndex, setManualSearchIndex] = useState<number | null>(null);
-  const [currentJobId, setCurrentJobId] = usePersistentState<string | null>('currentJobId', null);
+  // const [currentJobId, setCurrentJobId] = usePersistentState<string | null>('currentJobId', null);
   const [overlayState, setOverlayState] = useState<'none' | 'processes' | 'finalizing' | 'songSyncStatus'>('none');
   const [isFinalizing, setIsFinalizing] = useState(false);
   const isFinalizingRef = useRef(false);
@@ -114,91 +96,50 @@ function App() {
   const isReadyToSync = isSpotifyAuthenticated && isYoutubeAuthenticated;
 
   // Health check effect
-  useEffect(() => {
-    const checkBackend = async () => {
-      const result = await API.healthCheck();
-      if (result && result.status === 'ok') {
-        setBackendStatus(BackendStatus.ONLINE);
-      } else {
-        setBackendStatus(BackendStatus.OFFLINE);
-      }
-    };
+  const backendStatus = useBackendStatus()
 
-    // Check immediately on mount
-    checkBackend();
+  const { toast, setToast, toastFading } = useToast();
 
-    // Then check every 5 seconds
-    const interval = setInterval(checkBackend, 5000);
+  // Use useProcesses hook with the persistent processes state
+  const { addProcess, updateProcess, removeProcess } = useProcesses(processes, setProcesses);
 
-    return () => clearInterval(interval);
-  }, []);
+  const {
+        manualSearchSong,
+        setManualSearchSong,
+        handleManualSearchSpToYt,
+        handleSelectManualSearchSpToYt,
+        handleSkipSpToYt,
+        handleManualSearchYtToSp,
+        handleSelectManualSearchYtToSp,
+        handleSkipYtToSp,
+    } = useManualSearch(setSpToYtSongs, setYtToSpSongs)
+
+  const {
+      currentJobId,
+      setCurrentJobId,
+      startJobPolling,
+    } = useJobPolling({
+      userId,
+      setProcesses,
+      setToast,
+      setSpToYtSongs,
+      setOverlayState,
+      setIsFinalizing,
+      APIErrorHandler,
+  });
 
   // Fade in effect on tab change
+  const {quota, fetchQuota} = useYoutubeQuota();
   const quotaExceeded = !!(quota && quota.total >= quota.limit);
-  useEffect(() => {
-    setTabFade(false);
-    const timeout = setTimeout(() => setTabFade(true), 150); // match duration-500 for smooth fade
-    return () => clearTimeout(timeout);
-  }, [activeTab, quotaExceeded]);
 
-  const fetchQuota = useCallback(async () => {
-    try {
-      const data = await API.getYoutubeQuota() as { total: number; limit: number };
-      console.log('[DEBUG] Quota API response:', data);
-      setQuota({ total: data.total, limit: data.limit });
-    } catch {
-      setQuota(null);
-    }
-  }, []);
+const {
+  activeTab,
+  displayedTab,
+  tabFade,
+  handleTabChange,
+} = useTab(quotaExceeded);
+
   
-
-  // Prevent duplicate processes for the same job/type/playlist
-  // Enhanced addProcess: Now supports storing backend jobId (UUID) for backend operations
-  const addProcess = (
-    type: string,
-    message: string,
-    extra: Partial<Omit<Process, 'id' | 'type' | 'status' | 'message' | 'jobId'>> = {},
-    jobId?: string // backend job UUID
-  ) => {
-    setProcesses(prev => {
-      const filtered = prev.filter(
-        p => !(
-          (p.type === 'sync_sp_to_yt' || p.type === 'sync_yt_to_sp') &&
-          (type === 'sync_sp_to_yt' || type === 'sync_yt_to_sp')
-        )
-      );
-      const id = Date.now().toString();
-      // Set status to 'in-progress' for sync jobs, otherwise 'pending'
-      const isSync = type === 'sync_sp_to_yt' || type === 'sync_yt_to_sp';
-      return [...filtered, { id, type, status: isSync ? 'in-progress' : 'pending', message, ...extra, jobId }];
-    });
-    return Date.now().toString();
-  };
-
-  const updateProcess = (id: string, status: Process['status'], message?: string, interactive?: Process['interactive']) => {
-    setProcesses(prev => {
-      const process = prev.find(p => p.id === id);
-      // Only update if the message or status has changed
-      if (process && process.status === status && process.message === message) {
-        return prev;
-      }
-      return prev.map(p =>
-        p.id === id ? { ...p, status, message: message || p.message, interactive } : p
-      );
-    });
-    // Auto-remove completed or error processes after 2 seconds
-    if (status === 'completed' || status === 'error') {
-      setTimeout(() => {
-        setProcesses(prev => prev.filter(p => p.id !== id));
-      }, 2000);
-    }
-  };
-
-  const removeProcess = (id: string) => {
-    setTimeout(() => {
-      setProcesses(prev => prev.filter(p => p.id !== id));
-    }, 2000);
-  };
 
   const fetchStatus = async () => {
     try {
@@ -209,248 +150,75 @@ function App() {
     }
   }
 
-  // Remove unused parameters from startJobPolling
-  const startJobPolling = (jobId: string) => {
-    setCurrentJobId(jobId);
+  const onSyncSpToYt = async (playlistName: string, userId: string) => {
+    await handleSyncSpToYt(
+      playlistName,
+      userId,
+      ensureSpotifyAuthHandler,
+      ensureYoutubeAuthHandler,
+      addProcess,
+      setOverlayState,
+      setProcesses,
+      startJobPolling,
+      updateProcess,
+      APIErrorHandler
+  );
+  }
+
+  const onSyncYtToSp = async (playlistName: string, userId: string) => {
+    await handleSyncYtToSp(
+      playlistName,
+      userId,
+      ensureSpotifyAuthHandler,
+      ensureYoutubeAuthHandler,
+      addProcess,
+      setOverlayState,
+      setProcesses,
+      startJobPolling,
+      updateProcess,
+      APIErrorHandler
+    )
+  }
+
+  const onMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
+    await handleMergePlaylists(
+      userId,
+      ytPlaylist,
+      spPlaylist,
+      mergeName,
+      ensureSpotifyAuthHandler,
+      ensureYoutubeAuthHandler,
+      startJobPolling,
+      APIErrorHandler
+    )
+  }
+
+  const onDownloadSong = async (songTitle: string, artists: string, userId: string) => {
+    await handleDownloadSong(
+      userId,
+      songTitle,
+      artists,
+      addProcess,
+      updateProcess,
+      removeProcess,
+      fetchQuota,
+      setToast,
+      APIErrorHandler
+    )
   };
 
-  const handleSyncSpToYt = async (playlistName: string, userId: string) => {
-    if (!userId) return;
-    await ensureSpotifyAuth();
-    await ensureYoutubeAuth();
-
-    try {
-      // 1. Get track count for time estimate
-      const countResp = await API.getSpPlaylistTrackCount(playlistName, userId);
-      const trackCount = countResp?.track_count ?? null;
-      const timeEstimate = trackCount ? (trackCount * 4 + 5) : undefined;
-
-      // 2. Pre-sync check
-      const preSyncResp = await API.preSyncCheckSpToYt(playlistName, userId) as PreSyncCheckSpToYtResponse;
-      if (!preSyncResp || !Array.isArray(preSyncResp.tracks_to_sync)) {
-        throw new Error('Failed to fetch tracks to sync.');
-      }
-      const { tracks_to_sync, reduced } = preSyncResp;
-
-      // 3. Add process with quota reduction message and time estimate (no jobId yet)
-      let processMsg = `Syncing '${playlistName}' from Spotify to YouTube...`;
-      if (typeof timeEstimate === 'number') {
-        processMsg += ` (Est. ${timeEstimate}s)`;
-      }
-      if (reduced) {
-        processMsg += `\nDue to playlist size, only the first 50 songs will be synced.`;
-      }
-      const processId = addProcess('sync_sp_to_yt', processMsg, {
-        playlistName,
-        countdownEnd: typeof timeEstimate === 'number' ? Date.now() + timeEstimate * 1000 : undefined,
-      });
-      setOverlayState('processes');
-
-      // 4. Start sync job with filtered tracks
-      const jobResp = await API.startSyncSpToYt({
-        playlist_name: playlistName,
-        user_id: userId,
-        tracks_to_sync,
-      }) as StartSyncSpToYtResponse;
-      if (jobResp && jobResp.job_id) {
-        // Update the process to include the backend jobId (UUID)
-        setProcesses(prev => prev.map(p => p.id === processId ? { ...p, jobId: jobResp.job_id } : p));
-        startJobPolling(jobResp.job_id);
-      } else {
-        updateProcess(processId, 'error', 'Failed to start sync job.');
-      }
-    } catch (error) {
-      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
-    }
-  };
-
-  const handleSyncYtToSp = async (playlistName: string, userId: string) => {
-    if (!userId) return;
-    await ensureSpotifyAuth();
-    await ensureYoutubeAuth();
-
-    try {
-      // 1. Get track count for time estimate
-      const countResp = await API.getYtPlaylistTrackCount(playlistName, userId);
-      const trackCount = countResp?.track_count ?? null;
-      const timeEstimate = trackCount ? (trackCount * 4 + 5) : undefined;
-
-      // 2. Pre-sync check
-      const preSyncResp = await API.preSyncCheckYtToSp(playlistName, userId) as PreSyncCheckYtToSpResponse;
-      if (!preSyncResp || !Array.isArray(preSyncResp.tracks_to_sync)) {
-        throw new Error('Failed to fetch tracks to sync.');
-      }
-      const { tracks_to_sync, reduced } = preSyncResp;
-
-      // 3. Add process with quota reduction message and time estimate (no jobId yet)
-      let processMsg = `Syncing '${playlistName}' from YouTube to Spotify...`;
-      if (typeof timeEstimate === 'number') {
-        processMsg += ` (Est. ${timeEstimate}s)`;
-      }
-      if (reduced) {
-        processMsg += `\nDue to playlist size, only the first ${tracks_to_sync.length} songs will be synced.`;
-      }
-      const processId = addProcess('sync_yt_to_sp', processMsg, {
-        playlistName,
-        countdownEnd: typeof timeEstimate === 'number' ? Date.now() + timeEstimate * 1000 : undefined,
-      });
-      setOverlayState('processes');
-
-      // 4. Start sync job with filtered tracks
-      const jobResp = await API.startSyncYtToSp({
-        playlist_name: playlistName,
-        user_id: userId,
-        tracks_to_sync,
-      }) as StartSyncYtToSpResponse;
-      if (jobResp && jobResp.job_id) {
-        // Update the process to include the backend jobId (UUID)
-        setProcesses(prev => prev.map(p => p.id === processId ? { ...p, jobId: jobResp.job_id } : p));
-        startJobPolling(jobResp.job_id);
-      } else {
-        updateProcess(processId, 'error', 'Failed to start sync job.');
-      }
-    } catch (error) {
-      APIErrorHandler.handleError(error as Error, 'Failed to sync playlist');
-    }
-  };
-
-  const handleMergePlaylists = async (ytPlaylist: string, spPlaylist: string, mergeName: string, userId: string) => {
-    if (!userId || !ytPlaylist || !spPlaylist || !mergeName) return;
-    await ensureSpotifyAuth();
-    await ensureYoutubeAuth();
-    
-    try {
-      const data = await API.startMergePlaylists(ytPlaylist, spPlaylist, mergeName, userId) as { job_id: string };
-      if (data.job_id) {
-        startJobPolling(data.job_id);
-      }
-    } catch (error) {
-      APIErrorHandler.handleError(error as Error, 'Failed to start merge job');
-    }
-  };
-
-  const handleDownloadSong = async (songTitle: string, artists: string, userId: string) => {
-    if (!userId) return;
-    const processId = addProcess('download', `Downloading "${songTitle}"...`);
-    try {
-      const data = await API.downloadYtSong(songTitle, artists, userId) as APIResponse;
-      if (data.result) {
-        setToast(data.result);
-        updateProcess(processId, 'completed', 'Download completed successfully!');
-        removeProcess(processId);
-        fetchQuota();
-      }
-    } catch (error) {
-      updateProcess(processId, 'error', 'Failed to download song');
-      APIErrorHandler.handleError(error as Error, 'Failed to download song');
-    }
-  };
-  const handleManualSearch = (song: SongStatus, index: number) => {
-    setManualSearchSong(song);
-    setManualSearchIndex(index);
-  };
-
-  const handleSelectManualSearch = (_originalSong: SongStatus, newSongDetails: ManualSearchResult) => {
-    if (manualSearchIndex === null) return;
-    setSongs(prev =>
-      prev.map((s, i) =>
-        i === manualSearchIndex
-          ? {
-              ...s,
-              status: 'found',
-              yt_id: newSongDetails.yt_id,
-              yt_title: newSongDetails.title,
-              yt_artist: newSongDetails.artist,
-              requires_manual_search: false,
-            }
-          : s
-      )
-    );
-    setManualSearchSong(null);
-    setManualSearchIndex(null);
-  };
-
-  const handleSkipSpToYt = (_songToSkip: SongStatus, index: number) => {
-    setSongs(prev =>
-      prev.map((s, i) =>
-        i === index
-          ? { ...s, status: 'skipped', requires_manual_search: false }
-          : s
-      )
-    );
-    setManualSearchSong(null);
-    setManualSearchIndex(null);
-  };
-
-  // On mount, ensure overlays reflect process state
-  // (No need to persist overlay state)
-  // If you want to poll backend for status, add here
-  // useEffect(() => { ... }, []);
-
-  // --- Minimal fade-out for SongSyncStatus overlay ---
-  const handleFinalizeSpToYt = async () => {
-    setIsFinalizing(true);
-    isFinalizingRef.current = true;
-    try {
-      if (currentJobId) {
-        await API.finalizeJob(currentJobId);
-        setToast("Sync finalizing...");
-        setOverlayState('processes');
-        // Start polling for job completion
-        const poll = async () => {
-          let done = false;
-          while (!done) {
-            const job = await API.getJobStatus(currentJobId) as Job;
-            if (job.status === 'completed' || job.status === 'error') {
-              done = true;
-              setIsFinalizing(false);
-              setOverlayState('none');
-              setCurrentJobId(null);
-              setToast(job.status === 'completed' ? "Sync finished!" : "Sync failed.");
-            } else {
-              await new Promise(res => setTimeout(res, 2000));
-            }
-          }
-        };
-        poll();
-      }
-    } catch {
-      setIsFinalizing(false);
-      isFinalizingRef.current = false;
-    }
-  };
-
-  const handleFinalizeYtToSp = async () => {
-    setIsFinalizing(true);
-    isFinalizingRef.current = true;
-    try {
-      if (currentJobId) {
-        await API.finalizeJob(currentJobId);
-        setToast("Sync finalizing...");
-        setOverlayState('processes');
-        // Start polling for job completion
-        const poll = async () => {
-          let done = false;
-          while (!done) {
-            const job = await API.getJobStatus(currentJobId) as Job;
-            if (job.status === 'completed' || job.status === 'error') {
-              done = true;
-              setIsFinalizing(false);
-              setOverlayState('none');
-              setCurrentJobId(null);
-              setToast(job.status === 'completed' ? "Sync finished!" : "Sync failed.");
-            } else {
-              await new Promise(res => setTimeout(res, 2000));
-            }
-          }
-        };
-        poll();
-      }
-    } catch {
-      setIsFinalizing(false);
-      isFinalizingRef.current = false;
-    }
-  };
+  const {
+    handleFinalizeSpToYt,
+    handleFinalizeYtToSp
+  } = useFinalizeSync({
+    currentJobId,
+    setCurrentJobId,
+    setIsFinalizing,
+    isFinalizingRef,
+    setOverlayState,
+    setToast,
+    API
+  });
 
   // Remove dismissProcesses overlay state, just clear processes
   const dismissProcesses = () => {
@@ -477,31 +245,6 @@ function App() {
       return () => clearInterval(interval);
     }
   }, [quota]);
-  // State to track toast fade-out animation
-  const [toastFading, setToastFading] = useState(false);
-
-  useEffect(() => {
-    if (toast) {
-      // Reset fade state when a new toast appears
-      setToastFading(false);
-      
-      // Start fade-out after 4.5 seconds
-      const fadeTimer = setTimeout(() => {
-        setToastFading(true);
-      }, 4500);
-      
-      // Remove toast after fade completes (total 5s = 4.5s display + 0.5s fade)
-      const removeTimer = setTimeout(() => {
-        setToast(null);
-        setToastFading(false);
-      }, 5000);
-      
-      return () => {
-        clearTimeout(fadeTimer);
-        clearTimeout(removeTimer);
-      };
-    }
-  }, [toast]);
 
   const tabs = [
     { id: "1", label: "sync", icon1: <FaSpotify className="inline-block mx-1" />, icon2: <SiYoutube className="inline-block mx-1" /> },
@@ -510,290 +253,24 @@ function App() {
     // { id: "4", label: "download", icon1: <SiYoutube className="inline-block mx-1" />, label2: "song" },
   ];
 
-  // Fade out, then switch tab, then fade in
-  const handleTabChange = (tabId: string) => {
-    if (tabId === activeTab) return;
-    setTabFade(false); // start fade out
-    setPendingTab(tabId);
-  };
-
-  useEffect(() => {
-    if (!tabFade && pendingTab && pendingTab !== activeTab) {
-      // Wait for fade-out to finish (match duration-200)
-      const timeout = setTimeout(() => {
-        setActiveTab(pendingTab); // update activeTab for button highlight
-        setDisplayedTab(pendingTab); // switch content only after fade-out
-        setTabFade(true); // fade in new content
-        setPendingTab(null);
-      }, 150); // match duration-200
-      return () => clearTimeout(timeout);
-    }
-  }, [tabFade, pendingTab, activeTab, setActiveTab, setDisplayedTab]); 
 
   // On mount, get or create userId
   useEffect(() => {
     getOrCreateUserId().then(setUserId);
   }, []);
 
-  // Track the best process state for the current job
-  const handleJobUpdate = useCallback((job: Job) => {
-    console.log("Handling job update", job);
-    if (job.status === "ready_to_finalize") {
-      console.log("[DEBUG] job.result.songs:", job.result?.songs);
-    }
 
-    const errorMessage = job.error || 'An unknown error occurred.';
+  // Use custom hook to check YouTube and Spotify auth status
+  useAuthStatus(userId, setIsSpotifyAuthenticated, setIsYoutubeAuthenticated);
 
-    if (job.status === "completed") {
-      const toastMessage = job.job_notes
-        ? job.job_notes
-        : `Sync of '${job.playlist_name}' complete.`;
-      setToast(toastMessage);
-      setIsFinalizing(false);
-      setOverlayState('processes');
-    } else if (job.status === "error") {
-      // If there are partial results, show them in SongSyncStatus overlay
-      if (job.result?.songs && job.result.songs.length > 0) {
-        setSongs(job.result.songs);
-        setOverlayState('songSyncStatus');
-      }
-      // Show error toast with job_notes if present
-      setToast(job.job_notes ? job.job_notes : `Error in job ${job.job_id}: ${errorMessage}`);
-      setIsFinalizing(false);
-      // If no partial results, show processes overlay
-      if (!job.result?.songs || job.result.songs.length === 0) {
-        setOverlayState('processes');
-      }
-    } else if (job.status === "ready_to_finalize") {
-      setSongs(job.result?.songs || []);
-      setOverlayState('songSyncStatus');
-    }
-
-    setProcesses((prevProcesses) =>
-      prevProcesses.map((p) => {
-        if (p.id === currentJobId) {
-          if (job.status === "completed") {
-            const processMessage = job.job_notes
-              ? job.job_notes
-              : `Sync of '${job.playlist_name}' complete.`;
-            const subMessage = job.result?.songs
-              ? `${job.result.songs.length} songs synced.`
-              : "";
-            return {
-              ...p,
-              status: "completed",
-              message: processMessage,
-              subMessage: subMessage,
-            };
-          }
-          if (job.status === "error") {
-            return {
-              ...p,
-              status: "error",
-              message: job.job_notes ? job.job_notes : errorMessage,
-              subMessage: job.result?.songs ? `${job.result.songs.length} songs synced before error.` : undefined,
-            };
-          }
-          if (job.status === "ready_to_finalize") {
-            return {
-              ...p,
-              status: "done",
-              message: `Sync ready for review.`,
-            };
-          }
-        }
-        return p;
-      })
-    );
-  }, [setProcesses, setToast, setSongs, setOverlayState, setIsFinalizing, currentJobId]);
-
-  // Polling logic for job status
-  useEffect(() => {
-    if (!currentJobId) {
-      return;
-    }
-  
-    const interval = setInterval(async () => {
-      try {
-        const job = await API.getJobStatus(currentJobId) as Job;
-        handleJobUpdate(job);
-  
-        if (job.status === 'completed' || job.status === 'error' || job.status === 'ready_to_finalize') {
-          clearInterval(interval);
-        }
-      } catch (error) {
-        APIErrorHandler.handleError(error as Error, `Polling failed for job ${currentJobId}`);
-        clearInterval(interval);
-        setCurrentJobId(null); // Stop polling on error
-      }
-    }, 3000); // Poll every 3 seconds
-  
-    return () => clearInterval(interval);
-  }, [currentJobId, handleJobUpdate, setCurrentJobId]);
-
-  // On mount, or when userId changes, check for the latest job
-  useEffect(() => {
-    if (!userId) return;
-
-    // If there's already a job being polled, don't check for a new one.
-    if (currentJobId) return;
-
-    const resumeLatestJob = async () => {
-      try {
-        const latestJob = await API.getLatestJob(userId) as Job | null;
-        if (latestJob && (latestJob.status === 'in-progress' || latestJob.status === 'ready_to_finalize')) {
-            setCurrentJobId(latestJob.job_id);
-            handleJobUpdate(latestJob); // Immediately update UI with the job's state
-        }
-      } catch {
-        // Silently fail, no need to bother the user
-      }
-    };
-    resumeLatestJob();
-  }, [userId, currentJobId, handleJobUpdate, setCurrentJobId]);
-
-  // On mount or popup open, always check the current job status and update overlay state and persistent state accordingly
-  useEffect(() => {
-    if (!currentJobId) return;
-    API.getJobStatus(currentJobId).then((jobRaw) => {
-      const job = jobRaw as Job | null;
-      if (job) handleJobUpdate(job);
-    });
-  }, [currentJobId, handleJobUpdate]);
-
-  // Only check auth and trigger OAuth if userId is loaded
-  useEffect(() => {
-    if (!userId) {
-      console.log('No userId available yet, skipping auth check');
-      return;
-    }
-    console.log('Checking initial YouTube auth status for userId:', userId);
-    // Check auth status on mount, but don't trigger OAuth automatically
-    const checkAuth = async () => {
-      try {
-        console.log('Making API call to check YouTube auth status...');
-        const resp = await API.getYoutubeAuthStatus(userId);
-        console.log('Initial auth status check response:', resp);
-        setIsYoutubeAuthenticated(resp?.authenticated ?? false);
-        if (!resp || !resp.authenticated) {
-          console.log('User not authenticated with YouTube');
-          // Don't trigger OAuth here - wait for user action
-        } else {
-          console.log('User is authenticated with YouTube');
-        }
-      } catch (error) {
-        console.error('Error checking initial YouTube auth status:', error);
-        setIsYoutubeAuthenticated(false);
-        // Don't trigger OAuth here - wait for user action
-      }
-    };
-    checkAuth();
-  }, [userId]);
-
-  // Handler to check auth and trigger OAuth only when needed
-  const ensureYoutubeAuth = async () => {
-    if (!userId) {
-      // console.log('No userId available, cannot check YouTube auth');
-      return;
-    }
-    // console.log('Checking YouTube auth for user_id:', userId);
-    try {
-      // If we already know the auth status, use it
-      if (isYoutubeAuthenticated === true) {
-        // console.log('User already authenticated with YouTube (from state)');
-        return;
-      }
-      
-      const resp = await API.getYoutubeAuthStatus(userId);
-      // console.log('Auth status response:', resp);
-      setIsYoutubeAuthenticated(resp?.authenticated ?? false);
-      
-      if (!resp || !resp.authenticated) {
-        // console.log('User not authenticated with YouTube, starting OAuth flow...');
-        await startYoutubeOAuth(userId);
-        // After OAuth completes, update the auth status
-        setIsYoutubeAuthenticated(true);
-      } else {
-        // console.log('User already authenticated with YouTube');
-      }
-    } catch (error) {
-      // console.error('Error checking YouTube auth status:', error);
-      setIsYoutubeAuthenticated(false);
-      // Only start OAuth if we get a specific error indicating auth is needed
-      if (error instanceof Error && error.message.includes('authentication')) {
-        // console.log('Authentication error detected, starting OAuth flow...');
-        await startYoutubeOAuth(userId);
-        // After OAuth completes, update the auth status
-        setIsYoutubeAuthenticated(true);
-      } else {
-        // console.error('Unexpected error during auth check:', error);
-        throw error; // Re-throw other errors
-      }
-    }
+  const ensureYoutubeAuthHandler = async () => {
+    await ensureYoutubeAuth(userId, isYoutubeAuthenticated, setIsYoutubeAuthenticated);
   };
 
-  // Check Spotify auth on mount
-  useEffect(() => {
-    if (!userId) return;
-    const checkSpotifyAuth = async () => {
-      try {
-        const resp = await API.getSpotifyAuthStatus(userId);
-        setIsSpotifyAuthenticated(resp?.authenticated ?? false);
-      } catch {
-        setIsSpotifyAuthenticated(false);
-      }
-    };
-    checkSpotifyAuth();
-  }, [userId]);
-
-  // Handler to check auth and trigger OAuth only when needed
-  const ensureSpotifyAuth = async () => {
-    if (!userId) return;
-    if (isSpotifyAuthenticated === true) return;
-    const resp = await API.getSpotifyAuthStatus(userId);
-    setIsSpotifyAuthenticated(resp?.authenticated ?? false);
-    if (!resp || !resp.authenticated) {
-      await API.startSpotifyOAuth(userId);
-      setIsSpotifyAuthenticated(true); // Optionally, re-check after OAuth
-    }
+  const ensureSpotifyAuthHandler = async () => {
+    await ensureSpotifyAuth(userId, isSpotifyAuthenticated, setIsSpotifyAuthenticated);
   };
 
-  const handleManualSearchYtToSp = (song: SongStatus, index: number) => {
-    setManualSearchSong(song);
-    setManualSearchIndex(index);
-  };
-
-  const handleSelectManualSearchYtToSp = (_originalSong: SongStatus, newSongDetails: ManualSearchResult) => {
-    if (manualSearchIndex === null) return;
-    setYtToSpSongs(prev =>
-      prev.map((s, i) =>
-        i === manualSearchIndex
-          ? {
-              ...s,
-              status: 'found',
-              sp_id: newSongDetails.sp_id,
-              sp_title: newSongDetails.title,
-              sp_artist: newSongDetails.artist,
-              requires_manual_search: false,
-            }
-          : s
-      )
-    );
-    setManualSearchSong(null);
-    setManualSearchIndex(null);
-  };
-
-  const handleSkipYtToSp = (_songToSkip: SongStatus, index: number) => {
-    setYtToSpSongs(prev =>
-      prev.map((s, i) =>
-        i === index
-          ? { ...s, status: 'skipped', requires_manual_search: false }
-          : s
-      )
-    );
-    setManualSearchSong(null);
-    setManualSearchIndex(null);
-  };
 
   type YtToSpSearchResult = {
     sp_id: string;
@@ -824,55 +301,17 @@ function App() {
     });
   }, [currentJobId]);
 
-  // Add state for NoSongsToSync overlay fade
-  const [showNoSongsToSync, setShowNoSongsToSync] = useState(false);
-  const [noSongsFade, setNoSongsFade] = useState(false);
 
-  useEffect(() => {
-    if (overlayState === 'songSyncStatus' && songs.length === 0 && ytToSpSongs.length === 0) {
-      setShowNoSongsToSync(true);
-      setNoSongsFade(false);
-      const fadeTimer = setTimeout(() => setNoSongsFade(true), 4500);
-      const removeTimer = setTimeout(async () => {
-        setShowNoSongsToSync(false);
-        setOverlayState('none'); // Clear overlay state after fade out
-        setSongs([]);            // Clear songs array
-        setYtToSpSongs([]);      // Clear ytToSpSongs array
-        // Finalize job if needed to prevent overlay from reappearing
-        if (currentJobId) {
-          try {
-            const job = await API.getJobStatus(currentJobId) as Job;
-            if (job && job.status === 'ready_to_finalize') {
-              await API.finalizeJob(currentJobId);
-              setCurrentJobId(null);
-            }
-          } catch {
-            // Intentionally ignore errors when finalizing job after NoSongsToSync overlay
-          }
-        }
-      }, 5000);
-      return () => {
-        clearTimeout(fadeTimer);
-        clearTimeout(removeTimer);
-      };
-    } else {
-      setShowNoSongsToSync(false);
-      setNoSongsFade(false);
-    }
-  }, [overlayState, songs.length, ytToSpSongs.length, setSongs, setYtToSpSongs, currentJobId, setCurrentJobId]);
-
-  useEffect(() => {
-    if (!showNoSongsToSync) {
-      // Only clear if overlayState was songSyncStatus and both arrays are empty
-      if (overlayState === 'songSyncStatus' && songs.length === 0 && ytToSpSongs.length === 0) {
-        setOverlayState('none');
-        setSongs([]);
-        setYtToSpSongs([]);
-      }
-    }
-    // eslint-disable-next-line
-  }, [showNoSongsToSync]);
-
+  const { showNoSongsToSync, noSongsFade } = useNoSongsToSyncFade({
+      overlayState,
+      setOverlayState,
+      spToYtSongs,
+      setSpToYtSongs,
+      ytToSpSongs,
+      setYtToSpSongs,
+      currentJobId,
+      setCurrentJobId,
+  })
   // Cleanup orphaned processes whose jobs no longer exist (use jobId for backend calls)
   useEffect(() => {
     const cleanupOrphanedProcesses = async () => {
@@ -956,16 +395,16 @@ function App() {
                 className="absolute inset-0 z-40"
               >
                 <SongSyncStatus
-                  songs={songs.length > 0 ? songs : ytToSpSongs}
-                  onManualSearch={songs.length > 0 ? handleManualSearch : handleManualSearchYtToSp}
-                  onSkip={songs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
+                  songs={spToYtSongs.length > 0 ? spToYtSongs : ytToSpSongs}
+                  onManualSearch={spToYtSongs.length > 0 ? handleManualSearchSpToYt : handleManualSearchYtToSp}
+                  onSkip={spToYtSongs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
                   onFinalize={ytToSpSongs.length > 0 ? handleFinalizeYtToSp : handleFinalizeSpToYt}
                   finalizing={true}
                 />
               </motion.div>
-            ) : overlayState === 'songSyncStatus' && (songs.length > 0 || ytToSpSongs.length > 0) ? (
+            ) : overlayState === 'songSyncStatus' && (spToYtSongs.length > 0 || ytToSpSongs.length > 0) ? (
               <motion.div
-                key={songs.length > 0 ? "song-sync-status-overlay" : "yt-song-sync-status-overlay"}
+                key={spToYtSongs.length > 0 ? "song-sync-status-overlay" : "yt-song-sync-status-overlay"}
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -973,9 +412,9 @@ function App() {
                 className="absolute inset-0 z-40"
               >
                 <SongSyncStatus
-                  songs={songs.length > 0 ? songs : ytToSpSongs}
-                  onManualSearch={songs.length > 0 ? handleManualSearch : handleManualSearchYtToSp}
-                  onSkip={songs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
+                  songs={spToYtSongs.length > 0 ? spToYtSongs : ytToSpSongs}
+                  onManualSearch={spToYtSongs.length > 0 ? handleManualSearchSpToYt : handleManualSearchYtToSp}
+                  onSkip={spToYtSongs.length > 0 ? handleSkipSpToYt : handleSkipYtToSp}
                   onFinalize={ytToSpSongs.length > 0 ? handleFinalizeYtToSp : handleFinalizeSpToYt}
                   finalizing={false}
                 />
@@ -991,7 +430,7 @@ function App() {
               >
                 <NoSongsToSync />
               </motion.div>
-            ) : overlayState === 'processes' && processes.length > 0 ? (
+            ) : overlayState === 'processes' ? (
               <motion.div
                 key="processes-overlay"
                 initial={{ opacity: 0 }}
@@ -1083,14 +522,14 @@ function App() {
                     <div className="text-sm mb-4">Please authenticate with both Spotify and YouTube to continue.</div>
                     <button
                       className="mb-2 px-4 py-2 text-sm bg-green-700 hover:bg-green-600 rounded text-white"
-                      onClick={ensureSpotifyAuth}
+                      onClick={ensureSpotifyAuthHandler}
                       disabled={!!isSpotifyAuthenticated}
                     >
                       {isSpotifyAuthenticated ? "Spotify Authenticated" : "Authenticate Spotify"}
                     </button>
                     <button
                       className="px-4 py-2 text-sm bg-red-700 hover:bg-red-600 rounded text-white"
-                      onClick={ensureYoutubeAuth}
+                      onClick={ensureYoutubeAuthHandler}
                       disabled={!!isYoutubeAuthenticated}
                     >
                       {isYoutubeAuthenticated ? "YouTube Authenticated" : "Authenticate YouTube"}
@@ -1100,7 +539,7 @@ function App() {
                   <>
               {displayedTab === "1" && 
                 <SyncSpToYt 
-                onSync={handleSyncSpToYt} 
+                onSync={onSyncSpToYt} 
                 userId={userId || ''}
                 quotaExceeded={quotaExceeded}
                 quota={quota}
@@ -1111,7 +550,7 @@ function App() {
               }
               {displayedTab === "2" && 
                 <SyncYtToSp 
-                onSync={handleSyncYtToSp} 
+                onSync={onSyncYtToSp} 
                 userId={userId || ''}
                 quotaExceeded={quotaExceeded}
                 quota={quota}
@@ -1120,8 +559,8 @@ function App() {
                 isReadyToSync={isReadyToSync}
                 />
               }
-              {displayedTab === "3" && <MergePlaylists onMerge={handleMergePlaylists} userId={userId || ''} />}
-              {displayedTab === "4" && <DownloadSong onDownload={handleDownloadSong} userId={userId || ''} />}
+              {displayedTab === "3" && <MergePlaylists onMerge={onMergePlaylists} userId={userId || ''} />}
+              {displayedTab === "4" && <DownloadSong onDownload={onDownloadSong} userId={userId || ''} />}
               </>
             )}
             </motion.div>
@@ -1153,7 +592,7 @@ function App() {
           <ManualSearchModal
             song={manualSearchSong}
             onClose={() => setManualSearchSong(null)}
-            onSelectSong={ytToSpSongs.length > 0 ? handleSelectManualSearchYtToSp : handleSelectManualSearch}
+            onSelectSong={ytToSpSongs.length > 0 ? handleSelectManualSearchYtToSp : handleSelectManualSearchSpToYt}
             manualSearchApi={ytToSpSongs.length > 0 ? wrappedManualSearchYtToSp : API.manualSearchSpToYt}
             userId={userId!}
           />
@@ -1172,4 +611,3 @@ function App() {
 }
 
 export default App
-
