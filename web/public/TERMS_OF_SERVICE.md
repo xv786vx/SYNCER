@@ -38,4 +38,4 @@ We may modify these Terms from time to time. We will notify you of any changes b
 
 ## 8. Contact Us
 
-If you have any questions about these Terms, please contact us at [Your Contact Information].
+If you have any questions about these Terms, please contact us at firas.aj76@gmail.com.

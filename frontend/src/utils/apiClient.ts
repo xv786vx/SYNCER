@@ -18,8 +18,7 @@
  *    - Remote backend (https://syncer-26vh.onrender.com) for production
  */
 import { APIErrorHandler, withErrorHandling } from "./errorHandling";
-import { ManualSearchResult } from "../components/ManualSearchModal";
-import type { SongStatus } from "../types";
+import type { SongStatus, ManualSearchResult } from "../types";
 
 // Base URL configuration
 const API_BASE_URL = "https://syncer-26vh.onrender.com";
